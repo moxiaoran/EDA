@@ -1,0 +1,44 @@
+---
+title: "Twitter Semetic Analysis EDA"
+author: "Yifei Liu"
+date: "11/20/2018"
+output: html_document
+---
+
+```{r}
+library(rtweet)
+library(stringr)
+library(wordcloud2)
+library(dplyr)
+```
+
+
+```{r}
+hmt <- search_tweets(
+  "#HandmaidsTale", n = 2000, include_rts = FALSE
+)
+```
+
+```{r}
+hmtTable <- hmt %>% 
+  unnest_tokens(word, text)
+
+data(stop_words)
+hmtTable <- hmtTable %>%
+  anti_join(stop_words)
+
+hmtTable <- hmtTable %>%
+  dplyr::count(word, sort = TRUE) 
+hmtTable 
+
+hmtTable <-hmtTable %>%
+  dplyr::filter(!word %in% c('t.co', 'https', 'handmaidstale', "handmaid's", 'season', 'episode', 'de', 'handmaidsonhulu',  'tvtime', 
+                      'watched', 'watching', 'watch', 'la', "it's", 'el', 'en', 'tv',
+                      'je', 'ep', 'week', 'amp'))
+wordcloud2(hmtTable, size=0.7)
+
+
+```
+
+
+

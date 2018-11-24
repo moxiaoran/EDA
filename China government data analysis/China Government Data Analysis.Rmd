@@ -1,0 +1,10 @@
+---
+title: "China Government data analysis"
+author: "Yifei Liu"
+date: "11/10/2018"
+output: pdf_document
+---
+
+[Ministry of Civil Affairs of the People's Repiblic of China](http://www.mca.gov.cn). Play with government data and plot it. such as divirece data http://www.mca.gov.cn/article/sj/
+
+https://github.com/FinancialDataGirl/Practice_Makes_Perfect

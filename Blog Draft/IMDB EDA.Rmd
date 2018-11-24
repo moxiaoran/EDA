@@ -1,0 +1,136 @@
+---
+title: "IMDB analysis"
+author: "Yifei Liu"
+date: "11/20/2018"
+output: html_document
+---
+
+
+```{r, message = F, warning=F}
+library(R.utils) # unzip file
+library(tidyverse) # tidy data analysis
+library(tidytext)
+library(naniar) # visualize missing data
+library(ggplot2) # visualize data
+library(scales) # change scales in x, y axis
+
+theme_set(theme_minimal()) # change ggplot theme to minimal
+session_info()
+```
+
+
+Download IMDB dataset
+
+```{r, eval=F}
+file_dis <- "/Users/yifeiliu/Documents/R/data/EDA/Blog_draft/IMDB_analysis"
+setwd("/Users/yifeiliu/Documents/R/data/EDA/Blog_draft/IMDB_analysis")
+urls <- c("https://datasets.imdbws.com/name.basics.tsv.gz",
+          "https://datasets.imdbws.com/title.akas.tsv.gz",
+          "https://datasets.imdbws.com/title.basics.tsv.gz",
+          "https://datasets.imdbws.com/title.crew.tsv.gz",
+          "https://datasets.imdbws.com/title.episode.tsv.gz",
+          "https://datasets.imdbws.com/title.principals.tsv.gz",
+          "https://datasets.imdbws.com/title.ratings.tsv.gz")
+dest_file <- c("name.basics.tsv.gz",
+               "title.akas.tsv.gz",
+               "title.basics.tsv.gz",
+               "title.crew.tsv.gz",
+               "title.episode.tsv.gz",
+               "title.principals.tsv.gz",
+               "title.ratings.tsv.gz")
+
+for(i in seq_along(urls)) {
+  download.file(urls[i], dest_file[i])
+}
+
+for (i in seq_along(dest_file)) {
+  gunzip(dest_file[i])
+}
+setwd("/Users/yifeiliu/Documents/R/EDA")
+```
+
+
+Now we can read the file, we can load need data in R
+
+```{r}
+file_dis <- "/Users/yifeiliu/Documents/R/data/EDA/Blog_draft/IMDB_analysis"
+read_imdb <- function(data_path) {
+  path <- "/Users/yifeiliu/Documents/R/data/EDA/Blog_draft/IMDB_analysis/"
+  read_tsv(paste0(path, data_path), na = "\\N", progress = F)
+}
+
+df_rating <- read_imdb("title.ratings.tsv")
+df_principals <- read_imdb("title.principals.tsv")
+df_basics <- read_imdb("title.basics.tsv")
+df_actors <- read_imdb("name.basics.tsv")
+```
+
+Let's take a basic look at all those dataset and see what we can analysis
+
+
+```{r}
+gg_miss_var(df_rating, show_pct = T)
+gg_miss_var(df_principals, show_pct = T)
+gg_miss_var(df_basics, show_pct = T)
+gg_miss_var(df_actors, show_pct = T)
+```
+
+we can first take a look at how many genre of film have been film in these years. 
+
+```{r}
+head(df_basics) 
+count(df_basics, "titleType")
+
+df_basics_processed <- df_basics %>%
+  dplyr::filter(titleType == "movie",
+                runtimeMinutes < 180,
+                runtimeMinutes > 30,
+                startYear < 2020) %>% 
+  select(tconst, titleType, primaryTitle, startYear, runtimeMinutes, genres)
+
+gg_miss_var(df_basics_processed, show_pct = T)
+
+df_basics_processed %>%
+  unnest_tokens(genre, genres, token = stringr::str_split, pattern = ",") %>%
+  count("genre") %>%
+  ggplot(aes(x = freq, y = reorder(genre, freq))) +
+  geom_point() +
+  labs(x = "",
+       y = "Genre",
+       title = "How many genre film been release since 1894",
+       subtitle = "Data acquired from IMDB, Nov 20th, 2018")
+
+```
+
+
+## Mapping lead actors in movies
+
+```{r}
+df_actors_processed <- df_actors %>%
+  dplyr::filter(str_detect(primaryProfession, "actor|actress")) %>%
+  select(nconst, primaryName, birthYear, primaryProfession)
+
+
+df_rating_basic <- df_rating %>%
+  inner_join(df_basics_processed)
+
+df_principals_processed <- df_principals %>%
+  dplyr::filter(str_detect(category, "actor|actress")) %>%
+  select(tconst, ordering, nconst, category) %>%
+  group_by(tconst) %>%
+  dplyr::filter(ordering == min(ordering))
+
+df_movies <- df_principals_processed %>%
+  inner_join(df_actors_processed) %>%
+  inner_join(df_rating_basic)
+
+dim(df_movies)
+gg_miss_var(df_movies)
+
+```
+
+
+
+
+
+

@@ -1,0 +1,20 @@
+---
+title: "Civil Forfeiture"
+author: "Yifei Liu"
+date: "11/19/2018"
+output: html_document
+---
+
+
+
+```{r}
+civil_forfeiture <- fread("./data/ES_data.csv")
+
+civil_simple <- civil_forfeiture %>%
+  select("UPDT_TMSTMP", "ASSET_VAL", "ET_FLG",
+         "SZ_DIST", "SZ_DT", "SZ_DT_JUD")
+
+```
+
+reference:
+https://ij.org/report/policing-for-profit/
