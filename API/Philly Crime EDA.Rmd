@@ -1,0 +1,29 @@
+---
+title: "Philly Crime EDA"
+author: "Yifei Liu"
+date: "11/19/2018"
+output: html_document
+---
+
+```{r}
+library(data.table)
+library(tidyverse)
+library(bit64)
+library(lubridate)
+```
+
+```{r}
+crime_data <- fread("/Users/yifeiliu/Documents/R/data/EDA/incidents_part1_part2.csv", header = T)
+
+crime_data_2017 <- crime_data %>%
+  tbl_df() %>%
+  mutate(year = year(dispatch_date)) %>%
+  dplyr::filter(year == "2017")
+
+
+crime_data_2017 %>%
+  dplyr::count(text_general_code, sort = T)
+
+```
+
+

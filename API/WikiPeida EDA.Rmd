@@ -1,0 +1,11 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+https://www.youtube.com/watch?v=R4dKyqNyrL8&app=desktop
+https://upload.wikimedia.org/wikipedia/commons/7/7c/GMilovanovic_eRum2018.pdf
+https://github.com/bearloga/WikidataQueryServiceR
+https://github.com/bearloga/WikidataQueryServiceR#example-fetching-genres-of-a-particular-movie
+https://github.com/bearloga/WikidataQueryServiceR#fetching-queries-from-wikidatas-examples-page
+https://cran.r-project.org/web/packages/WikidataR/vignettes/Introduction.html

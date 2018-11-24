@@ -1,0 +1,81 @@
+---
+title: "World Bank API"
+author: "Yifei Liu"
+date: "11/10/2018"
+output: html_document
+---
+
+# World Bank API dataset
+
+https://github.com/mrpsonglao/data360r
+
+https://blogs.worldbank.org/opendata/introducing-data360r-data-power-r
+https://tcdata360.worldbank.org/tools/data360r
+
+
+
+```{r}
+library(data360r)
+df <- get_metadata360(site='tc', metadata_type = 'indicators')
+
+
+data_53 <- get_data360(dataset_id = 53) 
+
+global_competitiveness_index <- data_53 %>%
+  tbl_df() %>%
+  setNames(c("country_iso3", "country", "indicator", "subindicator_type",
+           '2007', '2008', '2009','2010' , '2011', '2012', '2013',
+           '2014', "2015", '2016', '2017', "dataset_id")) %>%
+  dplyr::filter(str_detect(indicator, " pillar"))
+  
+
+```
+
+
+## let's take a look at institutions
+```{r}
+
+world <- map_data("world") %>%
+  dplyr::filter(region != "Antarctica") %>%
+  tbl_df()
+
+institutions <- global_competitiveness_index %>%
+  dplyr::filter(str_detect(indicator, "Institutions"),
+                subindicator_type == "Value")
+
+institutions_processed <- institutions %>%
+  distinct(country, indicator, .keep_all = T) %>%
+  inner_join(maps::iso3166 %>%
+               select(a3, mapname) %>%
+                mutate(mapname = str_remove(mapname, "\\(.*")), 
+             by = c(country_iso3 = "a3"))
+
+
+institutions_processed <- institutions_processed %>%
+  gather("2007", "2008", "2008", "2009", "2010", "2011", "2012", "2013",
+         "2014", "2015", "2016", "2017", key = "year", value = "score")
+
+
+
+institutions_map <- world %>%
+  inner_join(institutions_processed, by = c(region = "mapname"))
+
+
+institutions_map %>%
+  ggplot(aes(long, lat, group = group, fill = score)) +
+  geom_polygon() +
+  scale_fill_gradient2(low = "blue", high = "red", midpoint = 4) +
+  theme_void() +
+  labs(title = "Global Competitiveness Index Institutions in :Year: {frame_time}",
+       fill = "Institution Score")
+  
+
+
+
+
+```
+
+
+
+
+

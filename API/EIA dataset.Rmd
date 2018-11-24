@@ -1,0 +1,20 @@
+---
+title: "EIA dataset"
+author: "Yifei Liu"
+date: "11/10/2018"
+output: html_document
+---
+
+play with library(EIAdata) and eAnalytics::eAnalytics() https://github.com/paulgovan/energyr
+library(energyr)
+
+```{r}
+library(EIAdata)
+natural_gas <- getCatEIA(cat=714804, key = key)
+natural_gas
+
+getEIA(ID = "870", key)
+getCatEIA(key, cat = 717234)
+
+```
+

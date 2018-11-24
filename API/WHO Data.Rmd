@@ -1,0 +1,16 @@
+---
+title: "WHO dataset"
+author: "Yifei Liu"
+date: "11/10/2018"
+output: html_document
+---
+
+http://freerangestats.info/blog/2016/02/06/world-health-organization
+
+https://cran.r-project.org/web/packages/WHO/vignettes/who_vignette.html
+
+
+```{r}
+library(WHO)
+```
+
