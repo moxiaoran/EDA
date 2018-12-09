@@ -1,0 +1,197 @@
+---
+title: "leading death analysis"
+author: "Yifei Liu"
+date: "11/27/2018"
+output: html_document
+---
+
+In this post I want to review the trend of leading causes of deaths in United States. Specially how fast the age adjusted rate decase in each state. The data come from [CDC](https://data.cdc.gov/NCHS/NCHS-Leading-Causes-of-Death-United-States/bi63-dtpu). The main numer I will use in this post in [age-adjusted death rates](https://health.mo.gov/data/mica/CDP_MICA/AARate.html). 
+
+# Pacakge and Data
+
+```{r, warning=F, message=F}
+library(tidyverse)
+library(jsonlite)
+library(fuzzyjoin)
+library(transformr) # devtools::install_github("thomasp85/transformr")
+library(sf)
+library(gganimate)
+theme_set(theme_minimal())
+
+
+```
+
+
+```{r, warning=F, message = F}
+death_data <- read_csv("/Users/yifeiliu/Documents/R/data/EDA/leading_death.csv")
+
+death_data <- death_data %>%
+  dplyr::rename(year = Year, 
+                all_cause = `113 Cause Name`, 
+                cause = `Cause Name`, 
+                state = State, 
+                deaths = Deaths, 
+                aadr = `Age-adjusted Death Rate`)
+
+death_data_processed <- death_data %>%
+  select(- all_cause) %>%
+  dplyr::filter(!cause == "All causes",
+                !str_detect(state, "United"))
+
+pop_data_2010 <- get_decennial(geography = "state",
+                          variables = "P001001",
+                          geometry = T,
+                          year = 2010,
+                          shift_geo = T)
+
+states <- pop_data_2010 %>%
+  select(NAME, geometry) %>%
+  setNames(c("state", "geometry"))
+
+
+death_data_geo <- merge(states, death_data, by = "state")
+
+
+```
+
+
+```{r}
+
+
+death_data_processed %>%
+  group_by(year, cause) %>%
+  dplyr::summarize(avg_death = mean(aadr)) 
+
+death_data_processed %>%
+  ggplot(aes(aadr)) +
+  geom_histogram() +
+  scale_x_log10(labels = comma_format())
+
+
+
+```
+
+
+
+
+
+### Basic Summary 
+
+
+We can take a look at the leading cuase of people death during those years
+
+
+
+```{r,warning=F}
+
+death_data_processed %>%
+  group_by(year, cause) %>%
+  dplyr::summarise(avg_death = mean(aadr)) %>%
+  ggplot(aes(year, avg_death, color = cause)) +
+  geom_line() +
+  labs(y = "AADR")
+
+
+death_data %>%
+  mutate(year = as.integer(year)) %>%
+  dplyr::filter(!cause == "All causes") %>%
+  group_by(year, cause)  %>%
+  dplyr::summarise(ave_death = mean(aadr)) %>%
+  ggplot(aes(ave_death, fct_reorder(cause, ave_death))) +
+  geom_point() +
+  labs(y = "Leading Death",
+       x = "Death Number",
+       title = "Leading Cause of Death in U.S. in year: {frame_time}",
+       subtitle = "Deaths are per 100,000 population",
+       caption = "Data from CDC") +
+  transition_time(year) +
+  ease_aes('linear')
+
+
+```
+
+
+
+### Visualize change in AADR
+
+Aggregated across state and year, see which state death rate increase or decrease
+
+```{r}
+
+death_data_spread <- death_data_processed %>%
+  dplyr::mutate(year = paste0("Y", year)) %>%
+  group_by(year, state) %>%
+  dplyr::summarize(avg_death = mean(aadr)) %>%
+  dplyr::mutate(i = row_number()) %>%
+  spread(year, avg_death) %>%
+  select(-i) %>%
+  mutate(current = Y2016,
+         change = Y2016 - Y1999)
+
+
+death_data_spread  %>%
+  select(state, current, change) %>%
+  ggplot(aes(current, change)) +
+  geom_point() +
+  geom_text(aes(label = state), vjust = 1, hjust = 1)
+
+
+```
+
+
+We can visualize the chagne see which place in United State have the highest AADR drop. 
+
+
+
+```{r, warning=F, message=F}
+death_data_spread  %>%
+  select(state, change) %>%
+  inner_join(states) %>%
+   ggplot() +
+  geom_sf(aes(fill = change)) +
+  coord_sf(crs = 26910) +
+  labs(title = "Change of Death Rate",
+       subtitle = "1999 : 2016 Death Rate Decrease by",
+       caption = "Death rate per 100,000 people") +
+  scale_fill_viridis_c(direction = -1) +
+  theme_minimal()
+
+death_data_processed %>%
+  group_by(year, state) %>%
+  dplyr::summarise(avg_death = mean(aadr)) %>%
+  mutate(year = as.integer(year)) %>%
+  inner_join(states) %>%
+  ggplot() +
+  geom_sf(aes(fill = avg_death)) +
+  coord_sf(crs = 26910) +
+  labs(title = "Death rate in U.S. year: {frame_time}",
+       subtitle = "Data from CDC",
+       caption = "Death rate per 100,000 people") +
+  scale_fill_viridis_c(direction = -1) +
+  transition_time(year)
+
+death_data_processed %>%
+  group_by(year, state) %>%
+  dplyr::summarise(avg_death = mean(aadr)) %>%
+  mutate(year = as.integer(year)) %>%
+  ggplot(aes(year, avg_death)) +
+  geom_line() +
+  scale_x_continuous(labels = function(x) paste0("'", substr(x, 3, 4))) +
+  facet_geo(~ state, grid = "us_state_grid2", label = "name") +
+  labs(x = "",
+       y = "",
+       title = "Age Adjusted Death Rate in United States",
+       caption = "@yifeiliu Source: Center for Disease Control and Prevention")
+```
+
+
+
+
+
+
+
+
+
+
+
+

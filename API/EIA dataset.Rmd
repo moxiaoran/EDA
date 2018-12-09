@@ -8,13 +8,86 @@ output: html_document
 play with library(EIAdata) and eAnalytics::eAnalytics() https://github.com/paulgovan/energyr
 library(energyr)
 
-```{r}
-library(EIAdata)
-natural_gas <- getCatEIA(cat=714804, key = key)
-natural_gas
+https://www.nrcan.gc.ca/energy/publications/efficiency/industrial/emis/6785
 
-getEIA(ID = "870", key)
-getCatEIA(key, cat = 717234)
+
+
+```{r}
+library(tidyquant)
+library(tidyr)
+library(tigris)
+library(maps)
+theme_set(theme_minimal())
+
 
 ```
+
+let take a look at how much energy consume by US residential sector
+
+```{r}
+
+total_eng <- getEIA("TOTAL.TERCBUS.M", key = key)
+total_eng <- data.frame(index(total_eng),
+                        total_eng) %>%
+  tbl_df() %>%
+  dplyr::rename(year = `index.total_eng.`, 
+                total= `TOTAL.TERCBUS.M`)
+
+total_eng
+
+total_eng %>%
+ggplot(aes(year, total, group = 1)) +
+  geom_line() +
+  labs(title = "Residential Sector Energy Consumption",
+       subtitle = "Data from EIA",
+       y = "",
+       x = "Year")
+
+```
+
+
+Let's take a look at Crude Oil production in each state
+
+```{r}
+state_name_abb <- 0
+
+
+for(i in c(1:length(state.abb))) 
+  state_name_abb[i] <- paste0("EIA/PET_MCRFP", state.abb[i], "1_A")
+  
+crude_oil <- tq_get(x = state_name_abb,
+                    get = "quandl",
+                    from = "2000-01-01")
+
+crude_oil$symbol <- str_replace(crude_oil$symbol, "EIA/PET_MCRFP", "") %>%
+  str_replace("1_A", "")
+
+crude_oil <- crude_oil %>%
+  mutate(date = year(date))
+
+
+us_states <- map_data("state")
+us_sf <- us_states %>%
+  select(-subregion) %>%
+  st_as_sf(coords = c("long", "lat"), crs = 4326)
+
+crude_oil %>%
+  setNames(symbol, state.name)
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
 

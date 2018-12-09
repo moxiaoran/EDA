@@ -1,0 +1,296 @@
+---
+title: "Tidyquant walkthrough"
+author: "Yifei Liu"
+date: "12/7/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## load required library
+
+```{r, message=F}
+library(tidyquant)
+library(knitr)
+library(kableExtra)
+library(scales)
+library(finstr)
+library(XBRL)
+```
+We can get the stock price data of FAANG and XLK
+```{r}
+Ra <- c("AAPL", "GOOGL","AMZN", "NFLX", "FB") %>%
+  tq_get(get = "stock.prices",
+         from = "2010-01-01",
+         to = "2018-12-1")  %>%
+  group_by(symbol) %>%
+  tq_transmute(select = adjusted,
+               mutate_fun = periodReturn,
+               period = "monthly",
+               col_rename = "Ra")
+
+Rb <-  tq_get("XLK", get = "stock.prices",
+         from = "2010-01-01",
+         to = "2018-12-1") %>%
+  tq_transmute(select = adjusted,
+               mutate_fun = periodReturn,
+               period = "monthly",
+               col_rename = "Rb")
+
+Ra
+Rb
+RaRb <- left_join(Ra, Rb, by = "date")
+```
+
+
+Now we can quick do some performance analysis on the stocks.
+1. CAPM
+2. Information Ratio
+3. VaR, ES
+
+```{r}
+
+RaRb %>%
+  tq_performance(Ra,
+                 Rb,
+                 performance_fun = table.CAPM,
+                 scale = 12) %>%
+  select(Alpha, Beta)
+
+RaRb %>%
+  tq_performance(Ra,
+                Rb,
+                performance_fun = InformationRatio,
+                scale = 12)
+Ra %>%
+  tq_performance(performance_fun = VaR,
+                 method = "historical")
+
+```
+
+
+## Portfolios
+
+We can use weight vector such as rep(0.2, 5) 
+
+```{r}
+wts <- rep(0.2, 5)
+
+portfolio_returns <- Ra %>%
+  tq_portfolio(assets_col = symbol,
+               returns_col = Ra,
+               weights = wts,
+               col_rename = "Ra")
+
+portfolio_returns
+
+```
+
+We can aggregated the portfolio return and benchmark returns together
+
+```{r}
+RaRb_portfolio <- portfolio_returns %>%
+  left_join(Rb, by = "date")
+
+
+```
+
+
+We can perofrmance different type of perofrmance analysis on this dataset
+
+```{r}
+RaRb_portfolio %>%
+  tq_performance(Ra,
+                 Rb,
+                 performance_fun = table.CAPM) 
+
+```
+
+We can now try to create multipel portfolio use tq_repeat_df
+
+```{r}
+Ra_multi <- Ra %>%
+  ungroup(symbol) %>%
+  tq_repeat_df(n = 4)
+
+weigths <- c(rep(0.2, 5),
+             rep(0.25, 4), 0,
+             rep(0.1, 3), 0.35, 0.35,
+             rep(0.15, 4), 0.4)
+
+weights_table <- tibble(c("AAPL", "GOOGL","AMZN", "NFLX", "FB")) %>%
+  tq_repeat_df(n = 4) %>%
+  bind_cols(tibble(weigths)) %>%
+  group_by(portfolio) %>%
+  setNames(c("portfolio",  "stocks", "weights"))
+
+portfolio_multi_returns <- Ra_multi %>%
+  tq_portfolio(assets_col = symbol,
+               returns_col = Ra,
+               weights = weights_table,
+               col_rename = "Ra")
+```
+
+
+After create different weight portfolio, we can see how each one perform by aggregate this data with baseline data.
+
+```{r}
+RaRb_multi_portfolio <- portfolio_multi_returns %>%
+  left_join(Rb, by = "date")
+```
+
+We can calculate each portfolio permance. These is full list of function that are avaibale in tq_peroformance_fun_options
+
+```{r}
+RaRb_multi_portfolio %>%
+  tq_performance(Ra,
+                 Rb,
+                 performance_fun = table.CAPM,
+                 scale = 12) %>%
+  select(portfolio, Alpha, Beta) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F)
+
+RaRb_multi_portfolio %>%
+  tq_performance(Ra,
+                 Rb,
+                 performance_fun = InformationRatio,
+                 scale = 12) %>%
+  setNames(c("Portfolio", "Information Ratio")) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F)
+
+RaRb_multi_portfolio %>%
+  tq_performance(Ra,
+                 performance_fun = Return.annualized) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F)
+
+
+
+```
+
+## Chart the returns
+
+We can not visulize the return use ggplot
+
+```{r}
+
+portfolio_multi_returns %>%
+  ggplot(aes(x = date, y = Ra)) +
+  geom_bar(stat = "identity", fill = palette_light()[[1]]) +
+  facet_wrap(~ portfolio) +
+  labs(title = "Portfolio Return",
+       x = "",
+       h = "Monthly Return") +
+  geom_smooth(method = "glm") +
+  theme_tq() +
+  scale_color_tq() +
+  scale_y_continuous(labels = percent_format())
+
+```
+
+This is one way to show the return are, but as we all know, return rate may be a little bit difficult to interpret. We can use dollar amount to see how money investment will change. 
+
+```{r}
+Ra_multi %>%
+  tq_portfolio(assets_col = symbol,
+               returns_col = Ra,
+               weights = weights_table,
+               col_rename = "Ra",
+               wealth.index = T) %>%
+  mutate(investment_grwoth = 10000 * Ra) %>%
+  ggplot(aes(x = date, y = investment_grwoth, color = factor(portfolio))) +
+  geom_line(size = 2) +
+  labs(title = "Portfolio Return",
+       x = "",
+       h = "Monthly Return") +
+  geom_smooth(method = "loess") +
+  theme_tq() +
+  scale_color_tq() +
+  scale_y_continuous(labels = dollar)
+
+```
+
+
+## key ratio 
+
+For any given stocks, the histrocial key ratios are avaibale for 10 years. 
+
+```{r}
+aapl_key_ratios <- tq_get("AAPL", get = "key.ratios")
+
+```
+
+```{r}
+aapl_key_ratios %>%
+  dplyr::filter(section == "Valuation Ratios") %>%
+  unnest() %>% 
+  ggplot(aes(date, value)) +
+  geom_line(aes(color = factor(category)) ,size = 1) +
+  theme_tq() +
+  scale_color_tq()
+
+
+aapl_key_ratios %>%
+  dplyr::filter(section == "Valuation Ratios") %>%
+  unnest()
+```
+
+Base on these example we can try to compare different firm financial ratio
+
+```{r}
+stocks <- c("AAPL", "GOOGL","AMZN", "NFLX", "FB")
+
+faang_key_ratio <- tq_get(stocks, get = "key.ratios")
+
+```
+
+Have a look at different firlm valutaion ratio
+
+```{r}
+faang_key_ratio %>%
+  dplyr::filter(section == "Valuation Ratios") %>%
+  unnest() %>%
+  ggplot(aes(date, value)) +
+  geom_line(aes(color = factor(symbol)),
+            size = 1) +
+  facet_wrap(~ factor(category), scales = "free_y") +
+  theme_tq() +
+  scale_color_tq()
+```
+
+
+```{r}
+
+  
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

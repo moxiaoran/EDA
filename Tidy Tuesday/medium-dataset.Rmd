@@ -1,0 +1,222 @@
+---
+title: "Analyze medium articles with R"
+author: "Yifei Liu"
+date: "12/9/2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r setup, include=F}
+
+knitr::opts_chunk$set(echo = T)
+
+```
+
+
+
+```{r}
+library(plyr)
+library(dplyr)
+
+library(tidyverse)
+library(tidytext)
+library(scales)
+library(widyr)
+library(ggraph)
+library(igraph)
+library(glmnet)
+library(broom)
+
+theme_set(theme_minimal())
+
+medium_dataset <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2018-12-04/medium_datasci.csv")
+
+medium_processed <- medium_dataset %>% 
+  select(-x1) %>%
+  dplyr::mutate(post_id = row_number())
+
+```
+
+
+```{r}
+
+# look at common authors
+medium_processed %>%
+  dplyr::count(author, sort = T)
+
+# common tags
+medium_processed %>%
+  summarize_at(vars(starts_with("tag_")), sum)
+
+# gather tags together and filter out the articles don't have tags
+medium_gathered <- medium_processed %>%
+  gather(tag, value, starts_with("tag")) %>%
+  dplyr::mutate(tag = str_remove(tag, "tag_")) %>%
+  dplyr::filter(value == 1)
+
+
+medium_processed %>%
+  gather(tag, value, starts_with("tag")) %>%
+  dplyr::mutate(tag = str_remove(tag, "tag_")) %>%
+  dplyr::filter(value == 1)
+  
+# count how many tags
+medium_gathered %>% 
+  dplyr::count(tag, sort = T)
+
+# look at median claps correspond to each tag and orrurance
+medium_gathered %>%
+  group_by(tag) %>%
+  dplyr::summarize(median_claps = median(claps),
+            n = n()) %>%
+  arrange(desc(median_claps))
+
+# look at claps cross all articles
+medium_processed %>%
+  ggplot(aes(claps)) +
+  geom_histogram() + 
+  scale_x_log10(labels = comma_format())
+
+# log scale reading time
+medium_processed %>%
+  dplyr::mutate(reading_time = pmin(10, reading_time)) %>%
+  ggplot(aes(reading_time)) +
+  geom_histogram(binwidth = .5) +
+  scale_x_continuous(breaks = seq(2,10, 2),
+                     labels = c(seq(2, 8, 2), "10+")) +
+  labs(x = "Medium reading time")
+
+# relationshop between tag and reading times
+medium_gathered %>%
+  group_by(tag) %>%
+  dplyr::summarize(reading_time = mean(reading_time)) %>%
+  arrange(desc(reading_time))
+
+
+```
+
+
+
+
+### Text mining
+
+```{r}
+
+# tokenized each work in artciles titles
+mediaum_words <- medium_processed %>%
+  dplyr::filter(!is.na(title)) %>%
+  select(post_id, title, subtitle, year, reading_time, claps) %>%  
+  unnest_tokens(word, title) %>%
+  anti_join(stop_words, by = "word") %>%
+  dplyr::filter(!(word %in% c("de", "en", "la", "para")),
+                str_detect(word, "[a-z]"))
+  
+# find common word in title 
+mediaum_words %>%
+  dplyr::count(word, sort = T) %>%
+  mutate(word = fct_reorder(word, n)) %>%
+  head(20) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Common word in medium post titles")
+```
+
+
+
+
+```{r}
+
+# filter out less common word
+medium_word_filtered <-  mediaum_words %>%
+  add_count(word) %>%
+  dplyr::filter(n >= 250)
+
+# find out how many claps for each word
+tag_claps <- medium_word_filtered %>%
+  group_by(word) %>%
+  dplyr::summarize(median_claps = median(claps),
+            geometric_mean_clpas = exp(mean(log(claps + 1))) - 1,
+            occurences = n()) %>%
+  arrange(desc(geometric_mean_clpas))
+
+top_word_cors <- medium_word_filtered %>%
+  select(post_id, word) %>%
+  pairwise_cor(word, post_id, sort = T) %>% 
+  head(150)
+
+# subset word in tag_claps and top_word_cors
+vertices <- tag_claps %>%
+  dplyr::filter(word %in% top_word_cors$item1|
+                  word %in% top_word_cors$item2)
+
+
+# visualize correlation among each word, color means claps, dot size mean occurance frequence.
+top_word_cors %>%
+  graph_from_data_frame(vertices = vertices) %>%
+  ggraph() +
+  geom_edge_link() +
+  geom_node_point(aes(size = occurences * 1.1, 
+                      color = geometric_mean_clpas)) +
+  geom_node_text(aes(label = name), repel = T)+
+  scale_color_gradient2(low = "blue", high = "red", midpoint = 9.129537) +
+  theme_void() +
+  labs(color = "Claps (mean)",
+       title  = "what's hot and what's not hot in medium data articles",
+       size = "# of occurrences",
+       subtitle = "Color shwos the geomtric mean of # of claps on articles with this word in title")
+
+```
+
+### Predicting # of claps based on title + tag
+
+```{r}
+# turn into a sparse matrix
+post_word_matrix <- medium_word_filtered %>%
+  distinct(post_id, word, claps) %>%
+  cast_sparse(post_id, word) 
+  
+
+# fit a LASSO regression
+
+claps <- medium_processed$claps[match(rownames(post_word_matrix), medium_processed$post_id)]
+
+lasso_model <- cv.glmnet(post_word_matrix, log(claps + 1))
+
+```
+
+
+
+```{r}
+plot(lasso_model)
+lasso_model
+
+tidy(lasso_model$glmnet.fit) %>% 
+  dplyr::filter(term %in% c("hadoop", "learning", "gdpr", "deep", "startup", "marketing")) %>%
+  ggplot(aes(lambda, estimate, color = term)) +
+  geom_line() +
+  scale_x_log10()
+
+tidy(lasso_model$glmnet.fit) %>%
+  dplyr::filter(lambda == lasso_model$lambda.min) %>%
+  arrange(desc(estimate))
+
+
+```
+
+
+
+### summary
+
+This is EDA is from [Tidy Tuesday screencast: analyzing Medium articles with R](https://www.youtube.com/watch?v=C69QyycHsgE&t=52s)
+
+Here is some books I think will be helpful to learn the concept we see today. 
+
+[tidytext](https://www.tidytextmining.com/ngrams.html#counting-and-correlating-pairs-of-words-with-the-widyr-package)
+[An introduction to statistical learning](https://www-bcf.usc.edu/~gareth/ISL/) Chapter 6
+
+
+
+
