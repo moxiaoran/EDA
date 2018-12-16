@@ -41,9 +41,9 @@ by_majoy_cateotry <- majors_processed %>%
   dplyr::filter(!is.na(Total)) %>%
   group_by(Major_category) %>%
   dplyr::summarize(Men = sum(Men),
-               Women = sum(Women),
-               Total = sum(Total),
-            MedianSalary = sum(Median * Sample_size) / sum(Sample_size)) %>%
+                  Women = sum(Women),
+                  Total = sum(Total),
+                  MedianSalary = sum(Median * Sample_size) / sum(Sample_size)) %>%
   mutate(ShareWomen = Women / Total) %>%
   arrange(desc(ShareWomen))
 
@@ -55,6 +55,8 @@ by_majoy_cateotry <- majors_processed %>%
 What major categories (e.g. enginerring, psycholog, business) were most common?
 
 ```{r}
+
+
 by_majoy_cateotry %>%
   mutate(Major_category = fct_reorder(Major_category, Total)) %>%
   gather(Gender, Number, Men, Women) %>%
@@ -207,8 +209,73 @@ majors_processed %>%
 * Examining Unemployment and fraction taking a job requrieing a college degree
 * Examining interquartile ranges
 
+### Unemployment
+
+We can have a look at which major have the highest unemployment rate
+
+```{r}
+majors_processed %>% 
+  arrange(desc(Unemployment_rate)) %>%
+  mutate(Major = fct_reorder(Major, Unemployment_rate)) %>%
+  head(20) %>%
+  ggplot(aes(Major, Unemployment_rate)) +
+  geom_col() +
+  coord_flip()
+```
+
+Now we can look at all major_categories see which one have higher unemployment rate
+
+```{r}
+majors_processed %>%
+  group_by(Major_category) %>%
+  summarize(Unemployed = sum(Unemployed),
+            Total = sum(Total),
+            Unemployment_rate = Unemployed / Total,
+            MedianSalary = sum(Median * Sample_size) / sum(Sample_size)) %>%
+  mutate(Major_category = fct_reorder(Major_category, Unemployment_rate)) %>%
+  ggplot(aes(Major_category, Unemployment_rate, fill = Major_category)) +
+  geom_col() +
+  coord_flip() +
+  labs(x = "", 
+       title = "Unemployment rate in Major Category",
+       y = "") +
+  theme(legend.position = "none")
+  
+  
+```
+
+### College degree required
+```{r}
+majors_processed %>% 
+  mutate(nondegree_rate = Non_college_jobs / Total) %>%
+  arrange(desc(nondegree_rate)) %>%
+  mutate(Major = fct_reorder(Major, nondegree_rate)) %>%
+  head(20) %>%
+  ggplot(aes(Major, nondegree_rate)) +
+  geom_col() +
+  coord_flip()
+
+```
 
 
+
+```{r}
+majors_processed %>%
+  filter(!is.na(Total)) %>%
+  group_by(Major_category) %>%
+  summarize(Non_college_jobs = sum(Non_college_jobs),
+            Total = sum(Total),
+            noncollege_degree = Non_college_jobs / Total,
+            MedianSalary = sum(Median * Sample_size) / sum(Sample_size)) %>%
+  mutate(Major_category = fct_reorder(Major_category, noncollege_degree)) %>%
+  ggplot(aes(Major_category, noncollege_degree, fill = Major_category)) +
+  geom_col() +
+  coord_flip() +
+  labs(x = "", 
+       title = "Percent of jobs dont' requried a college degree",
+       y = "") +
+  theme(legend.position = "none")
+```
 
 
 

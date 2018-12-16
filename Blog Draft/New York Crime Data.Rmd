@@ -1,0 +1,49 @@
+---
+title: "New York Crime Data"
+author: "Yifei Liu"
+date: "12/15/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(crimedata)
+theme_set(theme_minimal())
+
+
+
+```
+
+
+
+Get New York Crime data
+```{r}
+new_york <- get_crime_data(years = 2007:2017, cities = c("New York"))
+
+new_york %>% 
+  count(offense_type, sort = T) %>%
+  mutate(offense_type = fct_reorder(offense_type, n)) %>%
+  head(20) %>%
+  ggplot(aes(offense_type, n)) +
+  geom_col() +
+  coord_flip()
+  
+  
+  
+  
+  
+```
+
+
+
+
+
+
+
+
+
+
