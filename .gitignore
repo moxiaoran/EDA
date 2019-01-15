@@ -1,6 +1,10 @@
 .Rproj.user
 .Rhistory
 .RData
+.Rprofile
+.gitignore
+.DS_Store
+EDA.Rproj
 .Ruserdata
 xbrl.Cache
 XBRLcache
