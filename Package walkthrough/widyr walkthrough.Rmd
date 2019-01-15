@@ -1,0 +1,94 @@
+---
+title: "Untitled"
+author: "Yifei Liu"
+date: "1/8/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(gapminder)
+library(widyr)
+library(unvotes)
+library(maps)
+library(fuzzyjoin)
+library(countrycode)
+library(ggplot2)
+library(ggraph)
+library(igraph)
+
+```
+
+```{r}
+gapminder
+```
+```{r}
+gapminder %>%
+  pairwise_dist(country, year, lifeExp, upper = F, sort = T)
+```
+```{r}
+un_votes
+levels(un_votes$vote)
+```
+
+
+
+
+```{r}
+cors <- un_votes %>%
+  mutate(vote = as.numeric(vote)) %>%
+  pairwise_cor(country, rcid, vote, use = "pairwise.complete.obs", sort = T)
+
+cors
+
+```
+
+```{r}
+US_cors <- cors %>%
+  filter(str_detect(item1, "America"))
+
+US_cors %>%
+  arrange(correlation)
+
+
+world_data <- map_data("world") %>%
+  regex_full_join(iso3166, by = c("region" = "mapname")) %>%
+  filter(region != "Antarctica")
+
+US_cors %>%
+  mutate(a2 = countrycode(item2, "country.name", "iso2c")) %>%
+  full_join(world_data, by = "a2") %>%
+  ggplot(aes(long, lat, group = group, fill = correlation)) +
+  geom_polygon(color = "gray", size = .1) +
+  scale_fill_gradient2() +
+  coord_quickmap() +
+  theme_void()
+
+```
+
+```{r}
+cors_filtered <- cors %>%
+  filter(abs(correlation) > .6)
+
+continents <- data_frame(country = unique(un_votes$country)) %>%
+  filter(country %in% cors_filtered$item1 |
+         country %in% cors_filtered$item2) %>%
+  mutate(continent = countrycode(country, "country.name", "continent"))
+
+set.seed(2017)
+
+cors_filtered %>%
+  graph_from_data_frame(vertices = continents) %>%
+  ggraph() +
+  geom_edge_link(aes(edge_alpha = correlation)) +
+  geom_node_point(aes(color = continent), size = 3) +
+  geom_node_text(aes(label = name), check_overlap = T, vjust = 1, hjust = 1) +
+  theme_void()
+
+
+```
+

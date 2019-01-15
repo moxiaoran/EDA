@@ -1,0 +1,17 @@
+---
+title: "FTC"
+author: "Yifei Liu"
+date: "12/27/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+ftc_vio <- read_csv("https://www.ftc.gov/system/files/attachments/data-sets/2018q3_ftc_nonmerger_enforcement_actions.csv")
+
+```
+

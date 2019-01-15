@@ -1,0 +1,36 @@
+---
+title: "tidyquant time series walkthrough"
+author: "Yifei Liu"
+date: "1/14/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(tidyquant)
+library(cranlogs) 
+```
+
+
+
+```{r}
+pkgs <- c(
+    "tidyr", "lubridate", "dplyr", 
+    "broom", "tidyquant", "ggplot2", "purrr", 
+    "stringr", "knitr"
+    )
+
+tidyverse_downloads <- cran_downloads(
+    packages = pkgs, 
+    from     = "2017-01-01", 
+    to       = "2017-06-30") %>%
+    tibble::as_tibble() %>%
+    group_by(package)
+
+
+```
+

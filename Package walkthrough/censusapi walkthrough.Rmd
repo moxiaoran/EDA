@@ -1,0 +1,52 @@
+---
+title: "Tidycensus walkthrough"
+author: "Yifei Liu"
+date: "1/12/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidycensus)
+library(censusapi)
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+
+
+```
+
+Try to figure out how may APIs from census do we have
+
+```{r}
+apis <- listCensusApis()
+
+apis
+```
+
+```{r}
+apis %>% 
+  filter(name == "timeseries/healthins/sahie")
+
+sashie_vars <- listCensusMetadata(name = "timeseries/healthins/sahie",
+                                  type = "variables")
+
+head(sashie_vars)
+
+listCensusMetadata(name = "timeseries/healthins/sahie", type = "geography")
+
+```
+```{r}
+sahie_states <- getCensus(name = "timeseries/healthins/sahie",
+          vars = c("NAME", "IPRCAT", "IPR_DESC", "PCTUI_PT"),
+          region = "state:*",
+          time = "from 2006 to 2016")
+
+sahie_states
+
+
+
+```
+

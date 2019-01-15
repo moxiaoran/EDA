@@ -1,0 +1,27 @@
+---
+title: "FRED"
+author: "Yifei Liu"
+date: "12/27/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(tidyquant)
+```
+
+
+
+```{r}
+econ_sym <- c("FRED/CPIAUCSL", "FRED/CUSR0000SEHA", "FRED/CEU0500000008", "FRED/MSPUS")
+
+inflation_data <- tq_get(econ_sym, get = "quandl", from = "1970-01-01")
+
+
+```
+
+

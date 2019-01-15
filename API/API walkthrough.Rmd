@@ -1,0 +1,24 @@
+---
+title: "API"
+author: "Yifei Liu"
+date: "12/19/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Lear API
+
+## Resources
+
+[Plumber: Turning your R code into an API](https://www.rstudio.com/resources/videos/plumber-turning-your-r-code-into-an-api/)
+[Using Web APIs from R](https://www.rstudio.com/resources/videos/using-web-apis-from-r/)
+[How to Access Any RESTful API Using the R Language](https://www.programmableweb.com/news/how-to-access-any-restful-api-using-r-language/how-to/2017/07/21?page=2)
+[Chapter 4: Authentication, Part 1](https://zapier.com/learn/apis/chapter-4-authentication-part-1/)
+[An API for European Union legislation](http://api.epdb.eu)
+[FDIC](https://www.fdic.gov)
+[Bank Data & Statistics](https://www.fdic.gov/bank/statistical/)
+
+

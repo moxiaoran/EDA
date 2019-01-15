@@ -1,0 +1,233 @@
+---
+title: "anaime analysis"
+author: "Yifei Liu"
+date: "12/16/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(scales)
+library(tidytext)
+library(ggraph)
+library(igraph)
+library(glmnet)
+library(broom)
+library(widyr)
+
+theme_set(theme_minimal(base_size=12, base_family="HiraKakuProN-W3"))
+
+anime_list <- read_csv("~/Documents/R/data/EDA/Blog_draft/myanimelist/anime_filtered.csv")
+
+anime_processed <- anime_list %>% 
+  select(-image_url, -aired, -background, -broadcast, -image_url, -opening_theme, -ending_theme) %>%
+  separate(aired_string, into = c("start", "end"), sep = " to ") %>%
+  mutate(start = mdy(start),
+         end = mdy(end)) %>%
+  filter(start <= as.Date("2018-12-31")) %>%
+  mutate(duration = str_remove(duration, " per ep."),
+         rating = fct_recode(rating))
+
+```
+
+
+
+
+
+```{r}
+anime_processed %>%
+  count(studio, sort = T)
+
+anime_processed %>%
+  count(year = year(start)) %>%
+
+anime_processed %>%
+  ggplot(aes(score)) +
+  geom_density()
+
+anime_processed %>%
+  count(source, sort = T)
+
+anime_processed %>%
+  count(producer, sort = T)
+
+anime_processed %>%
+  count(type, sort = T)
+
+anime_processed %>%
+  count(episodes, sort = T)
+
+anime_processed %>%
+  count(duration, sort = T)
+
+anime_processed %>%
+  count(rating, sort = T)
+
+```
+
+
+
+
+### Visualize the rationship between each variables
+
+We can have a look at genre data
+
+
+```{r}
+
+genre_data <- anime_processed %>%
+  separate_rows(genre, sep = ",", convert = "T")
+
+genre_data %>%
+  count(genre, sort = T) %>%
+  mutate(genre = fct_reorder(genre, n)) %>%
+  head(20) %>%
+  ggplot(aes(genre, n)) +
+  geom_col() +
+  labs(x = "",
+       y = "") +
+  coord_flip()
+
+# how many anime come out every year since 1988
+anime_processed %>%
+  count(year = year(start)) %>%
+  filter(year > 1980) %>%
+  ggplot(aes(year, n)) +
+  geom_col() +
+  labs(x = "", y = "",
+       title = "Anime Produce Since 1980")
+
+# relationship between genres and PG rating
+genre_data %>%
+  group_by(genre, rating) %>%
+  summarize(count = n()) %>%
+  mutate(pct = count / sum(count)) %>%
+  ggplot(aes(genre, pct, fill = rating)) +
+  geom_bar(stat="identity") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 0)) +
+  scale_y_continuous(labels = percent_format()) +
+  labs(title = "Rating cross all genre",
+       y = "")
+
+
+
+
+
+```
+
+
+
+### Text mining
+
+```{r}
+anime_word <- anime_processed %>%
+  select(anime_id, title_japanese, type, source, rating, score, scored_by, genre) %>%
+  unnest_tokens(word, title_japanese) %>%
+  anti_join(stopwords("ja", "stopwords-iso") %>% tbl_df() %>% setNames("word"), by = "word") %>%
+  anti_join(stop_words, by = "word") %>%
+  filter(!str_detect(word, "[0-9]"),
+         word != "animation",
+         word != "ー")
+
+
+anime_word %>%
+  count(word, sort = T) %>%
+  mutate(word = fct_reorder(word, n)) %>%
+  head(20) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Common word in Anime titles",
+       x = "",
+       y = "",
+       caption = "Source: MyanimeList" )
+
+  
+```
+
+
+```{r}
+anime_word_filtered <- anime_word %>%
+  add_count(word) %>%
+  filter(n >= 100)
+
+
+name_score <-  anime_word_filtered %>%
+  group_by(word) %>%
+  summarize(median = median(score),
+            weight = sum(scored_by),
+            occurance = n()) %>%
+  arrange(desc(median))
+
+# find correlation about word in titles
+top_word_title <- anime_word_filtered %>%
+  select(anime_id, word) %>%
+  pairwise_cor(word, anime_id, sort = T) %>%
+  head(100)
+
+vertices <- name_score %>%
+  filter(word %in% top_word_title$item1 |
+         word %in% top_word_title$item2)
+
+set.seed(2018)
+
+top_word_title %>%
+  graph_from_data_frame(vertices = vertices) %>%
+  ggraph() +
+  geom_edge_link() +
+  geom_node_point(aes(size = occurance,
+                      color = median)) +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1, repel = T, family = "HiraKakuProN-W3") +
+  theme_void() +
+  scale_color_gradient2(low = "blue", high = "red", midpoint = 6.56) +
+  labs(color = "Anime Score",
+       title = "What are the most common word in Anime titles",
+       subtitle = "Color show the median of score on anime with this word in the title",
+       caption = "Source MyAnimeList")
+
+```
+
+### Predicting score based on title + genre + scored_by
+```{r}
+# turning into a sparse matrix
+anime_word_matrix <- anime_word_filtered %>%
+   separate_rows(genre, sep = ",", convert = "T") %>%
+   distinct(anime_id, word, score) %>%
+   cast_sparse(anime_id, word)
+
+# fit a Lasso model
+
+score <- anime_word_filtered$score[match(rownames(anime_word_matrix), anime_processed$anime_id)]
+
+na_index <- is.na(score)
+
+lasso_model <- cv.glmnet(anime_word_matrix[!na_index, ], score[!na_index])
+
+```
+
+
+```{r}
+plot(lasso_model)
+
+tidy(lasso_model$glmnet.fit) %>% 
+  filter(term %in% c("伝説", "冒険", "学園", "冒険", "宇宙", "物語")) %>%
+  ggplot(aes(lambda, estimate, color = term)) +
+  scale_x_log10() +
+  geom_line()
+
+
+```
+
+
+
+
+
+
+
+
+

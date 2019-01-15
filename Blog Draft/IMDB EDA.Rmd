@@ -13,6 +13,12 @@ library(tidytext)
 library(naniar) # visualize missing data
 library(ggplot2) # visualize data
 library(scales) # change scales in x, y axis
+library(lubridate)
+library(Hmisc)
+library(SDMTools)
+
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
 
 theme_set(theme_minimal()) # change ggplot theme to minimal
 session_info()
@@ -63,7 +69,189 @@ df_rating <- read_imdb("title.ratings.tsv")
 df_principals <- read_imdb("title.principals.tsv")
 df_basics <- read_imdb("title.basics.tsv")
 df_actors <- read_imdb("name.basics.tsv")
+df_episode <- read_imdb("title.episode.tsv")
+df_akas <- read_imdb("title.akas.tsv")
+
 ```
+## Popular TV Series Analysis
+
+```{r}
+df_basics %>%
+  filter(titleType == "tvSeries",
+         startYear <= 2018) %>%
+  group_by(startYear) %>%
+  summarize(observation = n()) %>%
+  ggplot(aes(startYear, observation)) +
+  geom_col()
+
+```
+
+
+We try to analyze the tv season data, so we need to aggreate the df_eposide data. 
+
+
+```{r}
+eposide_season <- df_episode %>%
+  inner_join(df_rating) %>%
+  group_by(parentTconst, seasonNumber) %>%
+  summarize(averageRating = sum(averageRating * numVotes) / sum(numVotes),
+            numVotes = sum(numVotes),
+            eposide_num = max(episodeNumber)) %>%
+  filter(!is.na(seasonNumber))
+
+
+tv_eposides <- df_basics %>%
+  right_join(eposide_season %>% rename(tconst = "parentTconst")) %>%
+  select(-titleType, -endYear) %>%
+  filter(startYear >= 1990,
+         numVotes > 100) %>%
+  group_by(tconst) %>%
+  filter(1 %in% seasonNumber,
+         all(seasonNumber == dplyr::row_number())) %>%
+  ungroup()
+
+us_tv <- df_akas %>%
+  filter(region == "US") %>%
+  inner_join(df_episode, by = c(titleId = "tconst")) %>%
+  select(title, parentTconst)
+
+tv_rating <- tv_eposides %>%
+  filter(tconst %in% us_tv$parentTconst)
+
+
+
+# new method
+
+tv_basic <- df_episode %>%
+  inner_join(df_basics) %>%
+  select(- titleType, - endYear) %>%
+  inner_join(df_rating, by = "tconst")
+
+
+us_tv <- df_akas %>%
+  rename(tconst = titleId) %>%
+  filter(region == "US") %>%
+  right_join(tv_basic, by = "tconst") %>%
+  select(- language, - attributes, - isOriginalTitle)
+
+
+# tv by season dataset
+
+tv_season <- us_tv %>%
+  group_by(seasonNumber, parentTconst, startYear, primaryTitle) %>%
+  summarize(averageRating = sum(averageRating * numVotes) / sum(numVotes),
+            numVotes = sum(numVotes, na.rm = T),
+            runtime = mean(runtimeMinutes, na.rm = T),
+            eposide_num = max(episodeNumber))
+
+
+tv_season <- tv_season %>%
+  group_by(parentTconst) %>%
+  filter(startYear >= 1990,
+         1 %in% seasonNumber,
+         numVotes > 100) %>%
+  mutate(year = startYear + seasonNumber - 1)
+
+tv_season %>% filter(primaryTitle == "The Wire")
+
+
+# join eposide with rating
+
+test_1 <- df_episode %>%
+  inner_join(df_rating)
+
+
+# join test1 with us tv df_akas
+test2 <- test_1 %>%
+  inner_join(df_basics) %>%
+  select(- titleType, - endYear)
+
+# filter out non us tv series
+
+us_tv <- df_akas %>%
+  filter(region == "US") %>%
+  select(titleId, title) %>%
+  rename(tconst = titleId)
+
+us_tv_eposide <- test2 %>%
+  inner_join(us_tv, by = "tconst")
+
+tv_season <- us_tv_eposide %>%
+  group_by(parentTconst, seasonNumber, startYear) %>%
+  summarize(averageRating = sum(averageRating * numVotes) / sum(numVotes),
+            numVotes = sum(numVotes, na.rm = T),
+            runtime = mean(runtimeMinutes, na.rm = T),
+            eposide_num = max(episodeNumber))
+
+
+```
+
+Now we have complete tv show series start from 1985, only in US, number of total voters over 1000.
+
+
+
+```{r}
+tv_eposides %>%
+  group_by(tconst) %>%
+  filter(seasonNumber <= 5) %>%
+  group_by(seasonNumber) %>%
+  summarize(av_rating = mean(averageRating),
+            num_voters = sum(numVotes))
+
+
+tv_eposides %>%
+  arrange(desc(averageRating))
+```
+
+what are the highest rating seasons of TV?
+
+```{r}
+
+by_show <- tv_eposides %>%
+  group_by(tconst) %>%
+  summarize(avg_rating = sum(averageRating * numVotes) / sum(numVotes),
+            sd = wt.sd(averageRating, numVotes),
+            seasons = n(),
+            num_votes = sum(numVotes)) %>%
+  arrange((avg_rating)) %>%
+  inner_join(tv_eposides %>% select(tconst, primaryTitle)) %>%
+  unique()
+
+by_show %>%
+  filter(seasons >= 5) %>%
+  arrange(desc(sd))
+
+tv_eposides %>%
+  filter(primaryTitle %in% c("Scrubs", "Dexter")) %>%
+  ggplot(aes(seasonNumber, averageRating, color = primaryTitle)) +
+  geom_line()
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 Let's take a basic look at all those dataset and see what we can analysis
 
@@ -131,6 +319,8 @@ gg_miss_var(df_movies)
 
 
 
+
+Reference:
 
 
 

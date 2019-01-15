@@ -1,0 +1,1273 @@
+---
+title: "Untitled"
+author: "Yifei Liu"
+date: "1/5/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidytext)
+library(janeaustenr)
+library(pdftools)
+library(stringr)
+library(tidyr)
+library(gutenbergr)
+library(tm)
+library(tm.plugin.webmining)
+library(purrr)
+library(methods)
+library(Matrix)
+library(scales)
+library(stringr)
+library(reshape2)
+library(ggraph)
+library(widyr)
+library(wordcloud)
+library(widyr)
+library(igraph)
+library(subtools)
+library(topicmodels)
+library(mallet)
+theme_set(theme_minimal())
+
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+
+```
+Tokenization
+
+```{r}
+text <- c("Because I could not stop for Death -", "He kindly stopped for me -", "The Carriage held but just Ourselves -", "and Immortality")
+
+text_df <- data_frame(line = 1:4, text = text)
+
+text_df %>%
+  unnest_tokens(word, text)
+```
+
+## Tidying the work of Jane Austen
+```{r}
+original_books <- austen_books() %>%
+  group_by(book) %>%
+  mutate(linenumber = row_number(),
+         chapter = cumsum(str_detect(text, regex("chapter [\\divxlc]", ignore_case = T)))) %>%
+  ungroup()
+
+tidy_books <- original_books %>%
+  unnest_tokens(word, text)
+
+tidy_books <- tidy_books %>%
+  anti_join(stop_words)
+
+tidy_books %>%
+  count(word, sort = T) %>%
+  filter(n > 600) %>%
+  mutate(word = fct_reorder(word, n)) %>%
+  ggplot(aes(word, n, fill = word)) +
+  geom_col() +
+  coord_flip() +
+  labs(x = "",
+       y = "",
+       title = "Most frequent word in Austin Book") +
+  theme(legend.position = "none")
+
+
+```
+
+
+## Gutenberg analysis
+```{r}
+
+hgwells <- gutenberg_download(c(35, 36, 5230, 159))
+
+tidy_hgwells <- hgwells %>%
+  unnest_tokens(word, text) %>% 
+  anti_join(stop_words)
+
+tidy_hgwells %>%
+  count(word, sort = T)
+
+bronte <- gutenberg_download(c(1260, 768, 969, 9182, 767))
+
+tidy_bronte <- bronte %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words)
+
+```
+
+
+```{r}
+frequency <- bind_rows(mutate(tidy_bronte, author = "Brontë Sisters"), 
+                       mutate(tidy_hgwells, author = "H.G. Wells"), 
+                       mutate(tidy_books, author = "Jane Austen")) %>% 
+  mutate(word = str_extract(word, "[a-z']+")) %>% 
+  count(author, word) %>% group_by(author) %>% 
+  mutate(proportion = n / sum(n)) %>% 
+  select(-n) %>% 
+  spread(author, proportion) %>% 
+  gather(author, proportion, `Brontë Sisters`:`H.G. Wells`)
+
+frequency %>%
+  ggplot(aes(proportion, y = `Jane Austen`,
+             color = abs(`Jane Austen` - proportion))) +
+  geom_abline(color = "gray40", lty = 20) +
+  geom_jitter(alpha = .1, size = 2.5, width = .3, height = .3) +
+  geom_text(aes(label = word), check_overlap = T, vjust = 1.5) +
+  scale_x_log10(labels = percent_format()) +
+  scale_y_log10(labels = percent_format()) +
+  scale_color_gradient(limits = c(0, 0.001),
+                       low = "darkslategray4", high = "gray75") +
+  facet_wrap(~ author, ncol= 2) +
+  theme(legend.position = "none") +
+  labs(y = "Jane Austen", x = "")
+
+cor.test(data = frequency[frequency$author == "Brontë Sisters",],
+         ~ proportion + `Jane Austen`)
+
+cor.test(data = frequency[frequency$author == "H.G. Wells",],
+         ~ proportion + `Jane Austen`)
+
+```
+
+# Chapter 2
+
+```{r}
+nrcjoy <- get_sentiments("nrc") %>%
+  filter(sentiment == "joy")
+
+tidy_books %>%
+  filter(book == "Emma") %>%
+  inner_join(nrcjoy) %>%
+  count(word, sort = T)
+
+
+```
+
+see how sentiment changes throughout each novel. we can use index to counts up 80 lines
+
+```{r}
+janeaustensentiment <- tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(book, index = linenumber %/% 80, sentiment) %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(sentiment = positive - negative)
+
+
+janeaustensentiment %>%
+  ggplot(aes(index, sentiment, fill = book)) +
+  geom_col(show.legend =  F) +
+  facet_wrap(~ book, ncol = 2, scales = "free_x")
+
+```
+
+Comparing three sentiment dictionaries
+
+```{r}
+pride_prejudice <- tidy_books %>%
+  filter(str_detect(book, regex("pride", ignore_case = T)))
+
+afinn <- pride_prejudice %>%
+  inner_join(get_sentiments("afinn")) %>%
+  group_by(index = linenumber %/% 80) %>%
+  summarize(sentiment = sum(score)) %>%
+  mutate(method = "AFINN")
+
+bing_and_nrc <- bind_rows(
+  pride_prejudice %>%
+    inner_join(get_sentiments("bing")) %>%
+    mutate(method = "Bing et al."),
+  pride_prejudice %>%
+    inner_join(get_sentiments("nrc") %>%
+    filter(sentiment %in% c("positive", "negative"))) %>%
+    mutate(method = "NRC")
+) %>%
+  count(method, index = linenumber %/% 80, sentiment) %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(sentiment = positive - negative)
+
+bind_rows(afinn, bing_and_nrc) %>%
+  ggplot(aes(index, sentiment, fill = method)) +
+  geom_col(show.legend = F) +
+  facet_wrap(~method, ncol = 1, scales = "free_y")
+
+
+bind_rows(afinn, bing_and_nrc) %>%
+  mutate(sentiment = scale(sentiment)) %>%
+  ggplot(aes(index, sentiment, fill = method)) +
+  geom_col(show.legend = F) +
+  facet_wrap(~method, ncol = 1, scales = "free_y")
+
+
+```
+
+### Most common positive and negative word
+
+```{r}
+
+bing_word_counts <- tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = T) %>%
+  ungroup()
+
+bing_word_counts %>%
+  group_by(sentiment) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  mutate(word = fct_reorder(word, n)) %>%
+  ggplot(aes(word, n, fill = sentiment)) +
+  geom_col(show.legend = F) +
+  facet_wrap(~ sentiment, scale = "free_y") +
+  labs(y = "Contribution to sentiment",
+       x = NULL) +
+  coord_flip()
+  
+```
+
+We can see miss been consider a negative word, but in the context, "miss" is used for young, unmarried women in Jane's work. So we need to custome stop_word
+
+```{r}
+custom_stop_words <- bind_rows(data_frame(word = c("miss"),
+                                          lexicon = c("custom")),
+                               stop_words)
+
+custom_stop_words %>%
+  count(lexicon)
+```
+
+
+### Wordcloud
+
+```{r}
+tidy_books %>%
+  anti_join(stop_words) %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 100))
+
+tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = T) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(color = c("gray20", "gray80"))
+
+
+```
+
+
+For all the tokenizing we have done so far are all at word level, unigrams. We may want to tokenize text into sentences. 
+
+```{r}
+PandP_sentences <- data_frame(text = prideprejudice) %>%
+  unnest_tokens(sentence, text, token = "sentences")
+
+PandP_sentences$sentence[2]
+```
+
+```{r}
+austen_chapters <- austen_books() %>%
+  group_by(book) %>%
+  unnest_tokens(chapter, text, token = "regex", pattern = "Chapter|CHAPTER [\\diVXLC]") %>%
+  ungroup()
+
+austen_chapters %>%
+  group_by(book) %>%
+  summarize(chapters = n())
+```
+
+After group austen book, we can ask questions such as what are the most negative chapter in each of Jane's novel. 
+
+```{r}
+bingnegative <- get_sentiments("bing") %>%
+  filter(sentiment == "negative")
+
+wordcounts <- tidy_books %>%
+  group_by(book, chapter) %>%
+  summarize(words = n())
+
+
+tidy_books %>%
+  group_by(book, chapter) %>%
+  add_count(chapter)
+
+tidy_books %>%
+  semi_join(bingnegative) %>%
+  group_by(book, chapter) %>%
+  summarize(negativewords = n()) %>%
+  left_join(wordcounts, by = c("book", "chapter")) %>%
+  mutate(ratio = negativewords / words) %>%
+  filter(chapter != 0) %>%
+  top_n(1) %>%
+  ungroup()
+
+  
+
+
+```
+
+
+# Chapter 3 Analyzing word and Document Frequency: tf_itf
+
+## Term frequency in Jane's Novels
+```{r}
+
+book_words <- austen_books() %>%
+  unnest_tokens(word, text) %>%
+  count(book, word, sort = T) %>% 
+  ungroup()
+
+total_words <- book_words %>%
+  group_by(book) %>%
+  summarize(total = sum(n))
+
+book_words <- left_join(book_words, total_words)
+book_words
+
+```
+
+```{r}
+book_words %>%
+  ggplot(aes(n / total, fill = book)) +
+  geom_histogram(show.legend = F) +
+  xlim(NA, 0.0009) +
+  facet_wrap(~book, ncol = 2, scales = "free_y")
+```
+
+## Zipf's Law
+```{r}
+freq_by_rank <- book_words %>%
+  group_by(book) %>%
+  mutate(rank = row_number(),
+         term_frequency = n / total)
+
+freq_by_rank
+
+freq_by_rank %>%
+  ggplot(aes(rank, term_frequency, color = book)) +
+  geom_line(size = 1.1, alpha = .8, show.legend = F) +
+  scale_x_log10() +
+  scale_y_log10(labels = percent_format()) 
+
+rank_subset <- freq_by_rank %>%
+  filter(rank < 500, 
+         rank > 10)
+
+lm(log10(term_frequency) ~ log10(rank), data = rank_subset)
+
+freq_by_rank %>%
+  ggplot(aes(rank, term_frequency, color = book)) +
+  geom_line(size = 1.1, alpha = .8, show.legend = F) +
+  geom_abline(intercept = -0.6226, slope = -1.1125, color = "gray50", linetype = 2) +
+  scale_x_log10() +
+  scale_y_log10(labels = percent_format()) 
+
+```
+
+## the bind_tf_idf function
+
+```{r}
+book_words <- book_words %>%
+  bind_tf_idf(word, book, n)
+
+book_words %>%
+  select(-total) %>%
+  arrange(desc(tf_idf))
+
+book_words %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>%
+  group_by(book) %>%
+  top_n(15) %>%
+  ggplot(aes(word, tf_idf, fill = book)) +
+  geom_col(show.legend = F) +
+  labs(x = NULL, y = "tf_idf") +
+  facet_wrap(~book, ncol = 2, scales = "free") +
+  coord_flip()
+
+
+book_words %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, rev(unique(word)))) %>%
+  group_by(book) %>%
+  top_n(15, tf_idf) %>%
+  ggplot(aes(word, tf_idf, fill = book)) +
+  geom_col(show.legend = F) +
+  labs(x = NULL, y = "tf_idf") +
+  facet_wrap(~book, ncol = 2, scales = "free") +
+  coord_flip()
+
+
+
+```
+
+## A Corpus of Physics Texts
+```{r}
+
+physics <- gutenberg_download(c(37729, 14725, 13476, 5001), meta_fields = "author")
+
+physics_words <- physics %>%
+  unnest_tokens(word, text) %>%
+  count(author, word, sort = T) %>%
+  ungroup()
+
+plot_physics <- physics_words %>%
+  bind_tf_idf(word, author, n) %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word))),
+         author = as.factor(author))
+
+plot_physics %>%
+  group_by(author) %>%
+  top_n(15, tf_idf) %>%
+  ungroup() %>%
+  mutate(word = fct_reorder(word, tf_idf)) %>%
+  ggplot(aes(word, tf_idf, fill = author)) +
+  geom_col(show.legend = F) +
+  labs(x = NULL, y = "tf-idf") +
+  facet_wrap(~author, scales = "free") +
+  coord_flip()
+  
+  
+
+```
+
+
+```{r}
+physics %>%
+  filter(str_detect(text, "AK")) %>%
+  select(text)
+```
+
+
+# Chapter 4 Relationships Between words: N-grams and Correlations
+
+So far we've consider words as individual units, and considered there relationship to sentiemtn or to documents. we can use token = "ngrams" argument to divided text by pair of adjacent words rather than just by individual ones. 
+
+## Tokenizing by N-gram
+```{r}
+austen_bigrams <- austen_books() %>%
+  unnest_tokens(bigram, text, token = "ngrams", n = 2)
+
+austen_bigrams
+
+
+```
+
+
+```{r}
+
+austen_bigrams %>% 
+  count(bigram, sort = T)
+
+bigrams_separated <- austen_bigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+bigrams_filtered <- bigrams_separated %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word)
+
+bigram_count <- bigrams_filtered %>%
+  count(word1, word2, sort = T)
+
+bigram_count
+```
+
+
+```{r}
+bigram_united <- bigrams_filtered %>%
+  unite(bigram, word1, word2, sep = " ")
+
+bigram_united
+
+
+austen_books() %>%
+  unnest_tokens(bigram, text, token = "ngrams", n = 3) %>%
+  separate(bigram, c("word1", "word2", "word3"), sep = " ") %>% 
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word) %>%
+  filter(!word3 %in% stop_words$word) %>%
+  count(word1, word2, word3, sort = T)
+
+
+```
+
+## Analyzing Bigrams
+
+```{r}
+bigrams_filtered %>%
+  filter(word2 == "street") %>%
+  count(book, word1, sort = T)
+```
+
+
+```{r}
+bigram_tf_idf <- bigram_united %>%
+  count(book, bigram) %>%
+  bind_tf_idf(bigram, book, n) %>%
+  arrange(desc(tf_idf))
+
+bigram_tf_idf %>%
+  mutate(bigram = factor(bigram, rev(unique(bigram)))) %>%
+  group_by(book) %>%
+  top_n(15) %>%
+  ungroup() %>%
+  ggplot(aes(bigram, tf_idf, fill = book)) +
+  geom_col(show.legend = F) +
+  coord_flip() +
+  facet_wrap(~book, scales = "free", ncol = 2) +
+  labs(x = NULL, y = NULL)
+```
+
+## Using Bigrams to provide context in sentiment analysis
+
+```{r}
+bigrams_separated %>%
+  filter(word1 == "not") %>%
+  count(word1, word2, sort = T)
+```
+
+```{r}
+AFINN <- get_sentiments("afinn")
+
+AFINN
+
+not_words <- bigrams_separated %>%
+  filter(word1 == "not") %>%
+  inner_join(AFINN, by = c(word2 = "word")) %>%
+  count(word2, score, sort = T) %>%
+  ungroup()
+
+not_words
+
+not_words %>%
+  mutate(contribution = n * score) %>%
+  arrange(desc(abs(contribution))) %>%
+  head(20) %>%
+  mutate(word2 = fct_reorder(word2, contribution)) %>%
+  ggplot(aes(word2, n * score, fill = n * score > 0)) +
+  geom_col(show.legend = F) +
+  labs(x = "Word preceded by \"not\"",
+       y = "Sentiment Score * number of occurances") +
+  coord_flip()
+
+```
+
+
+## Visualizing a Network of bigrams with ggraph
+
+```{r}
+bigram_count
+
+bigram_graph <- bigram_count %>%
+  filter(n > 20) %>%
+  graph_from_data_frame()
+
+bigram_graph
+```
+we can use ggraph package to plot this igraph
+
+```{r}
+set.seed(2017)
+ggraph(bigram_graph, layout = "fr") +
+  geom_edge_link() +
+  geom_node_point() +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1)
+
+set.seed(2016)
+a <- grid::arrow(type = "closed", length = unit(.15, "inches")) 
+
+ggraph(bigram_graph, layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n), show.legend = F,
+                 arrow = a, end_cap = circle(.07, 'inches')) +
+  geom_node_point(color = "lightblue", size = 5) +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1) +
+  theme_void()
+
+
+```
+
+## Visualizing Bigrams in other texts
+
+```{r}
+count_bigrams <- function(dataset) {
+  dataset %>%
+    unnest_tokens(bigrams, text, token = "ngrams", n = 2) %>%
+    separate(bigrams, c("word1", "word2"), sep = " ") %>%
+    filter(!word1 %in% stop_words$word,
+           !word2 %in% stop_words$word) %>%
+    count(word1, word2, sort = T)
+}
+
+visualize_bigrams <- function(bigrams) {
+  set.seed(2016) 
+  a <- grid::arrow(type = "closed", length = unit(.15, "inches"))
+
+  bigrams %>%
+    graph_from_data_frame() %>% 
+    ggraph(layout = "fr") + 
+    geom_edge_link(aes(edge_alpha = n), show.legend = FALSE, arrow = a) + 
+    geom_node_point(color = "lightblue", size = 5) + 
+    geom_node_text(aes(label = name), vjust = 1, hjust = 1) + 
+    theme_void()
+
+}
+
+
+
+kjv <- gutenberg_download(10)
+
+kjv_bigrams <- kjv %>%
+  count_bigrams()
+
+kjv_bigrams %>%
+  filter(n > 40,
+         !str_detect(word1, "\\d"),
+         !str_detect(word2, "\\d")) %>%
+  visualize_bigrams()
+
+
+```
+
+```{r}
+austen_section_words <- austen_books() %>%
+  filter(book == "Pride & Prejudice") %>%
+  mutate(section = row_number() %/% 10) %>%
+  filter(section > 0) %>%
+  unnest_tokens(word, text) %>%
+  filter(!word %in% stop_words$word)
+
+
+word_pairs <- austen_section_words %>%
+  pairwise_count(word, section, sort = T)
+
+word_pairs
+
+word_cors <- austen_section_words %>%
+  group_by(word) %>%
+  filter(n() > 20) %>%
+  pairwise_cor(word, section, sort = T)
+
+word_cors
+
+
+word_cors %>%
+  filter(item1 == "pounds")
+
+
+word_cors %>%
+  filter(item1 %in% c("elizabeth", "pounds", "married", "pride")) %>%
+  group_by(item1) %>%
+  top_n(6) %>%
+  ungroup() %>%
+  mutate(item2 = fct_reorder(item2, correlation)) %>%
+  ggplot(aes(item2, correlation)) +
+  geom_col(show.legend = F) +
+  facet_wrap(~ item1, scales = "free", ncol= 2) +
+  coord_flip()
+
+set.seed(2016)
+
+word_cors %>%
+  filter(correlation > .15) %>%
+  graph_from_data_frame() %>%
+  ggraph(layout = "fr") +
+  geom_edge_link(aes(edge_alpha = correlation), show.legend = F) +
+  geom_node_point(color = "lightblue", size = 5) +
+  geom_node_text(aes(label = name), repel = T) +
+  theme_void()
+
+
+```
+
+# Chpater 5. Converting to and from Nontidy Formats
+
+## Tidying DocumetnTermMatrix Objectes
+
+```{r}
+data("AssociatedPress", package = "topicmodels")
+
+AssociatedPress
+
+terms <- Terms(AssociatedPress)
+
+head(terms)
+
+```
+```{r}
+ap_td <- tidy(AssociatedPress)
+
+ap_td
+
+```
+
+```{r}
+ap_sentiments <- ap_td %>%
+  inner_join(get_sentiments("bing"), by = c(term = "word"))
+
+ap_sentiments
+
+
+ap_sentiments %>%
+  count(sentiment, term, wt = count) %>%
+  ungroup() %>%
+  filter(n >= 200) %>%
+  mutate(n = case_when(
+    .$sentiment == "negative" ~ -n,
+    TRUE ~ n
+  )) %>%
+  mutate(term = fct_reorder(term, n)) %>%
+  ggplot(aes(term, n, fill = sentiment)) +
+  geom_bar(stat = "identity", show.legend = F) +
+  ylab("Controbution to sentiment") +
+  coord_flip()
+  
+
+```
+
+## Tidying dfm objects
+
+```{r}
+data("data_corpus_inaugural", package = "quanteda")
+
+inaug_dfm <- quanteda::dfm(data_corpus_inaugural, verbose = F)
+inaug_dfm
+
+
+inaug_td <- tidy(inaug_dfm)
+inaug_td
+
+inaug_tf_idf <- inaug_td %>%
+  bind_tf_idf(term, document, count) %>%
+  arrange(desc(tf_idf))
+
+inaug_tf_idf
+
+inaug_tf_idf %>%
+  filter(document %in% c("1861-Lincoln", "1933-Roosevelt", "1961-Kennedy", "2009-Obama")) %>%
+  mutate(term = factor(term, rev(unique(term)))) %>%
+  group_by(document) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  ggplot(aes(term, tf_idf, fill = document)) +
+  geom_col(show.legend = F) +
+  facet_wrap(~ document, scales = "free") +
+  coord_flip() +
+  labs(x = "")
+ 
+
+```
+
+
+```{r}
+year_term_ounts <- inaug_td %>%
+  extract(document, "year", "(\\d+)", convert = T) %>%
+  complete(year, term, fill = list(count = 0)) %>%
+  group_by(year) %>%
+  mutate(year_total = sum(count))
+  
+year_term_ounts %>%
+  filter(term %in% c("god", "america", "foreign", "union", "constitution", "freedom")) %>%
+  ggplot(aes(year, count / year_total)) +
+  geom_point() +
+  geom_smooth() +
+  facet_wrap(~ term, scales = "free_y") +
+  labs(y = "% frequency of word in inaugural address")
+  
+```
+## Casting Tidy Text Data into a Matrix
+
+```{r}
+ap_td %>%
+  cast_dtm(document, term, count)
+
+
+ap_td %>%
+  cast_dfm(term, document, count)
+
+m <- ap_td %>%
+  cast_sparse(document, term, count)
+
+dim(m)
+class(m)
+```
+
+
+
+
+```{r}
+austen_dtm <- austen_books() %>%
+  unnest_tokens(word, text) %>%
+  count(book, word) %>%
+  cast_dtm(book, word, n)
+
+austen_dtm
+
+```
+
+## Tidying Corpus Objects with metadata
+
+```{r}
+data("acq")
+acq
+class(acq)
+
+acq[[1]]
+
+acq_td <- tidy(acq)
+acq_td
+
+acq_tokens <- acq_td %>%
+  select(- places) %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words, by = "word")
+
+acq_tokens %>%
+  count(word, sort = T)
+
+acq_tokens %>%
+  count(id, word) %>%
+  bind_tf_idf(word, id, n) %>%
+  arrange(desc(tf_idf))
+
+
+```
+
+## Example: mining financial articles
+
+```{r}
+company <- c("Microsoft", "Apple", "Google", "Amazon", "Facebook", "Twitter", "IBM", "Yahoo", "Netflix")
+symbol <- c("MSFT", "AAPL", "GOOG", "AMZN", "FB", "TWTR", "IBM", "YHOO", "NFLX")
+
+download_articles <- function(symbol) {
+    WebCorpus(YahooFinanceSource(symbol))
+}
+
+stock_articles <- data_frame(company = company,
+                         symbol = symbol) %>%
+mutate(corpus = map(symbol, download_articles))
+
+stock_tokens <- stock_articles %>%
+  unnest(map(corpus, tidy)) %>%
+  unnest_tokens(word, text) %>%
+  select(company, datetimestamp, word, id, heading)
+
+stock_tf_idf <- stock_tokens %>%
+  count(company, word) %>%
+  filter(!str_detect(word, "\\d+")) %>%
+  bind_tf_idf(word, company, n) %>%
+  arrange(- tf_idf)
+
+
+
+```
+
+```{r}
+stock_tf_idf %>%
+  mutate(word = factor(word, rev(unique(word)))) %>%
+  group_by(company) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  ggplot(aes(word, tf_idf, fill = company)) +
+  geom_col(show.legend = F) +
+  facet_wrap(~ company, scales = "free") +
+  coord_flip()
+
+stock_tokens %>%
+  anti_join(stop_words, by = "word") %>%
+  count(word, id, sort = T) %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(word) %>%
+  summarize(contribution = sum(n * score)) %>%
+  top_n(12, abs(contribution)) %>%
+  mutate(word = fct_reorder(word, contribution)) %>%
+  ggplot(aes(word, contribution)) +
+  geom_col() +
+  coord_flip() +
+  labs(y = "Frequency of word * AFINN score")
+
+```
+
+We can see in this chart AFINN was not suitable for sentiment analysis for financial news, it miss interpret some common word such as share, shares foo (in this case stand for Montley Fool). But luckly, we can use other sentiment terms
+
+```{r}
+stock_tokens %>%
+  count(word) %>%
+  inner_join(get_sentiments("loughran"), by = "word") %>%
+  group_by(sentiment) %>%
+  top_n(5, n) %>%
+  ungroup() %>%
+  mutate(word = fct_reorder(word, n)) %>%
+  ggplot(aes(word, n, fill = sentiment)) +
+  geom_col(show.legend = F) +
+  coord_flip() +
+  facet_wrap(~ sentiment, scales = "free") +
+  labs(y = "Frequency of this word in the recent financial articles")
+
+
+stock_sentiment_count <- stock_tokens %>%
+  inner_join(get_sentiments("loughran"), by = "word") %>%
+  count(sentiment, company) %>%
+  spread(sentiment, n, fill = 0)
+
+stock_sentiment_count %>%
+  mutate(score = (positive - negative) / (positive + negative)) %>% 
+  mutate(company = reorder(company, score)) %>% 
+  ggplot(aes(company, score, fill = score > 0)) + 
+  geom_col(show.legend = FALSE) + 
+  coord_flip() + 
+  labs(x = "Company", y = "Positivity score among 20 recent news articles")
+
+  
+```
+
+
+
+# Chapter 6
+
+```{r}
+
+data("AssociatedPress")
+
+AssociatedPress
+
+```
+```{r}
+ap_lda <- LDA(AssociatedPress, k = 2, control = list(seed = 1234))
+
+ap_lda
+
+
+```
+## Word Topic Probabilities
+
+```{r}
+ap_topics <- tidy(ap_lda, matrix = "beta")
+ap_topics
+```
+
+```{r}
+ap_top_terms <- ap_topics %>%
+  group_by(topic) %>%
+  top_n(10, beta) %>%
+  ungroup() %>%
+  arrange(beta, - beta)
+
+ap_top_terms %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = F) +
+  facet_wrap( ~ topic, scales = "free") +
+  coord_flip()
+
+```
+
+```{r}
+beta_spread <- ap_topics %>%
+  mutate(topic = paste0("topic", topic)) %>%
+  spread(topic, beta) %>%
+  filter(topic1 > .001 | topic2 > .001) %>%
+  mutate(log_ratio = log2(topic2 / topic1))
+
+
+beta_spread
+
+beta_spread %>% 
+  top_n(20, abs(log_ratio)) %>%
+  mutate(term = reorder(term, log_ratio)) %>%
+  ggplot(aes(term, log_ratio, fill = log_ratio > 0)) +
+  geom_col(show.legend = F) +
+  coord_flip() +
+  labs(y = "Log2 ratio of beta in topic2 / topic1")
+  
+
+```
+
+## Document topic probabilities
+
+```{r}
+ap_documents <- tidy(ap_lda, matrix = "gamma")
+ap_documents
+
+tidy(AssociatedPress) %>%
+  filter(document == 6) %>%
+  arrange(desc(count))
+
+```
+
+## Example: The Great Library Heist
+
+```{r}
+titles <- c("Twenty Thousand Leagues under the Sea", "The War of the Worlds", "Pride and Prejudice",
+           "Great Expectations")
+books <- gutenberg_works(title %in% titles) %>%
+  gutenberg_download(meta_fields = "title")
+
+reg <- regex("^chapter ", ignore_case = T)
+
+by_chapter <- books %>%
+  group_by(title) %>%
+  mutate(chapter = cumsum(str_detect(text, reg))) %>%
+  ungroup() %>%
+  filter(chapter > 0) %>%
+  unite(document, title, chapter)
+
+# split into words
+
+by_chapter_word <- by_chapter %>%
+  unnest_tokens(word, text)
+
+word_counts <- by_chapter_word %>%
+  anti_join(stop_words) %>%
+  count(document, word, sort = T) %>%
+  ungroup()
+
+word_counts
+
+
+```
+
+## LDA on chapters
+
+```{r}
+chapters_dtm <- word_counts %>%
+  cast_dtm(document, word, n)
+chapters_dtm
+
+```
+```{r}
+chapters_lda <- LDA(chapters_dtm, k = 4, control = list(seed = 1234))
+
+chapters_lda
+
+
+```
+```{r}
+chapter_topics <- tidy(chapters_lda, matrix = "beta")
+chapter_topics
+
+top_terms <- chapter_topics %>%
+  group_by(topic) %>%
+  top_n(5, beta) %>%
+  ungroup() %>%
+  arrange(topic, - beta)
+
+top_terms
+
+top_terms %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = F) +
+  coord_flip() +
+  facet_wrap( ~ topic, scales = "free")
+
+```
+
+
+```{r}
+chapters_gamma <- tidy(chapters_lda, matrix = "gamma")
+chapters_gamma
+
+```
+
+
+```{r}
+chapters_gamma <- chapters_gamma %>%
+  separate(document, c("title", "chapter"), sep = "_", convert = T)
+chapters_gamma
+
+chapters_gamma %>%
+  mutate(title = reorder(title, gamma * topic)) %>%
+  ggplot(aes(factor(topic), gamma)) +
+  geom_boxplot() +
+  facet_wrap( ~ title)
+
+```
+
+```{r}
+chapter_classifications <- chapters_gamma %>%
+  group_by(title, chapter) %>%
+  top_n(1, gamma) %>%
+  ungroup()
+
+chapter_classifications
+
+book_topics <- chapter_classifications %>%
+  count(title, topic) %>%
+  group_by(title) %>%
+  top_n(1,n) %>%
+  ungroup() %>%
+  transmute(consensus = title, topic)
+
+book_topics
+
+chapter_classifications %>%
+  inner_join(book_topics, by = "topic") %>%
+  filter(title != consensus)
+
+```
+```{r}
+assignments <- augment(chapters_lda, data = chapters_dtm)
+assignments
+
+```
+```{r}
+assignments <- assignments %>%
+  separate(document, c("title", "chapter"), sep = "_", convert = T) %>%
+  inner_join(book_topics, by = c(".topic" = "topic"))
+
+assignments
+
+```
+```{r}
+assignments %>%
+  count(title, consensus, wt = count) %>%
+  group_by(title) %>%
+  mutate(percent = n / sum(n)) %>%
+  ggplot(aes(consensus, title, fill = percent)) +
+  geom_tile() +
+  scale_fill_gradient2(high = "red", label = percent_format()) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        panel.grid = element_blank()) +
+  labs(x = "Books words were assigned to",
+       y = "Book words come from",
+       fill = "% of assignments")
+
+
+```
+
+what are the most common miss assigned word
+
+
+```{r}
+wrong_words <- assignments %>%
+  filter(title != consensus)
+wrong_words
+
+wrong_words %>%
+  count(title, consensus, term, wt = count) %>%
+  ungroup() %>%
+  arrange(desc(n))
+
+```
+Some word only appear in flopson but still assigned to the pride and prejudice cluster
+
+```{r}
+word_counts %>%
+  filter(word == "flopson")
+
+```
+
+## Alternative LDA implementations
+
+```{r}
+collapsed <- by_chapter_word %>%
+  anti_join(stop_words, by = "word") %>%
+  mutate(word = str_replace(word, "'", "")) %>%
+  group_by(document) %>%
+  summarize(text = paste(word, collapse = " "))
+
+# create an empty file of "stop words"
+
+file.create(empty_file <- tempfile())
+docs <- mallet.import(collapsed$document, collapsed$text, empty_file)
+
+mallet_model <- MalletLDA(num.topics = 4)
+mallet_model$loadDocuments(docs)
+mallet_model$train(100)
+
+```
+
+
+
+```{r}
+tidy(mallet_model)
+tidy(mallet_model, matrix = "gamma")
+
+term_counts <- rename(word_counts, term = word)
+augment(mallet_model, term_counts)
+
+
+
+```
+
+
+
+
+# Yes Minister text analysis
+==========
+
+```{r, warning=F, message=F}
+file_dir <- c("/Users/yifeiliu/Documents/R/data/EDA/subtitle/yes_minister/")
+
+a <- read.subtitles.serie(file_dir)
+df <- subDataFrame(a)
+
+str(df)
+
+
+```
+
+
+```{r}
+df_word <- df %>%
+  unnest_tokens(word, Text) %>%
+  count(season, word, sort = T) %>%
+  ungroup()
+
+df_total_words <- df_word %>%
+  group_by(season) %>%
+  summarize(total = sum(n))
+
+df_book_words <- left_join(df_word, df_total_words)
+df_book_words
+
+df_book_words %>% 
+  ggplot(aes(n / total, fill = season)) +
+  geom_histogram(show.legend = F) +
+  xlim(NA, 0.0009) +
+  facet_wrap(~season, scales = "free_y")
+  
+freq_df_rank <- df_book_words %>%
+  group_by(season) %>%
+  mutate(rank = row_number(),
+         term_freq = n / total)
+
+
+freq_df_rank %>%
+  ggplot(aes(rank, term_freq, color = season)) +
+  geom_line(show.legend = F) +
+  scale_x_log10() +
+  scale_y_log10()
+
+```
+
+
+```{r}
+df_book_words <- df_book_words %>%
+  bind_tf_idf(word, season, n)
+
+df_book_words
+
+df_book_words %>%
+  select(-total) %>%
+  arrange(desc(tf_idf))
+
+df_book_words %>%
+  select(-total) %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, rev(unique(word)))) %>%
+  group_by(season) %>%
+  top_n(15) %>%
+  ungroup() %>%
+  ggplot(aes(word, tf_idf, fill = season)) +
+  geom_col(show.legend = F) +
+  labs(x = NULL, y = "tf-idf") +
+  facet_wrap(~ season, scales = "free") +
+  coord_flip()
+
+```
+
+
+

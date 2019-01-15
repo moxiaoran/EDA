@@ -1,0 +1,134 @@
+---
+title: "Untitled"
+author: "Yifei Liu"
+date: "12/26/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Word Bank Dataset
+
+### Show global trade data
+
+```{r}
+library(data360r)
+library(lubridate)
+library(scales)
+library(tidyquant)
+library(comtradr)
+library(censusapi)
+library(streamgraph)# devtools::install_github("hrbrmstr/streamgraph")
+theme_set(theme_minimal())
+
+detach("package:dplyr", unload=TRUE)
+library("dplyr", lib.loc="/Library/Frameworks/R.framework/Versions/3.5/Resources/library")
+
+df <- get_metadata360(site='tc', metadata_type = 'indicators')
+df_1 <- get_metadata360(site='gov', metadata_type = 'indicators')
+
+
+# df %>% View()
+
+# df_1 %>% View()
+
+
+
+
+```
+
+Export data 
+
+```{r}
+df_exp <- get_data360(indicator_id = 2369, output_type = "long")
+
+df_exp_sum <- df_exp %>%
+  tbl_df() %>%
+  setNames(c("country", "name", "indicator", "sub", "product", "period", "observation")) %>%
+  select(product, period, observation) %>%
+  filter(product != "All Products") %>%
+  mutate(observation = as.numeric(observation),
+         obs_scaled = observation / 1000000000) %>%
+  group_by(period, product) %>%
+  summarize(obs_scaled = sum(obs_scaled, na.rm = T)) %>%
+  ungroup() %>%
+  mutate(period = as.numeric(as.character(period)))
+
+
+streamgraph(df_exp_sum, key = "product", value = "obs_scaled", date = "period", offset="silhouette") %>%
+  sg_axis_x(2, "year", "%Y") %>%
+  sg_fill_tableau("cyclic") %>%
+  sg_legend(show=TRUE, label= "Product Classification: ") %>%
+  sg_title(title = "Total World Export(US $Billion), by Product Classification")
+```
+
+Manufacturing value add dataset
+
+```{r}
+manufact_data <- get_data360(indicator_id = c(1044, 1045), output_type = "long")
+
+manufact_data %>%
+  tbl_df() %>%
+  setNames(c("country", "name", "indicator", "sub", "period", "observation")) %>%
+  mutate(period = as.numeric(as.character(period)),
+         obs_scaled = observation / 1000000000) %>%
+  filter(name %in% c("China", "United States", "Germany", "United Kingdom", "Japan"),
+         period >= 1970,
+         indicator == "Manufacturing, value added (current US$)") %>%
+  ggplot(aes(period, obs_scaled, color = name)) +
+  geom_line() +
+  labs(x = "",
+       y = "",
+       title = "Manufacturing, value add",
+       subtitle = "constant 2010 US$",
+       caption = "Source: World Bank") +
+  scale_y_continuous(labels = dollar_format(scale = 1, prefix = "B$"))
+
+
+manufact_data %>%
+  tbl_df() %>%
+  setNames(c("country", "name", "indicator", "sub", "period", "observation")) %>%
+  mutate(period = as.numeric(as.character(period)),
+         observation = observation / 100) %>%
+  filter(name %in% c("China", "United States", "Germany", "United Kingdom", "Japan"),
+         period >= 1970,
+         indicator == "Manufacturing, value added (% of GDP)") %>%
+  ggplot(aes(period, observation, color = name)) +
+  geom_line() +
+  labs(x = "",
+       y = "",
+       title = "Manufacturing, value added (% of GDP)",
+       subtitle = "constant 2010 US$",
+       caption = "Source: World Bank") +
+  scale_y_continuous(labels = percent_format())
+```
+
+
+### U.S. China trade data analysis
+
+```{r}
+apis <- listCensusApis()
+View(apis)
+
+sahie_vars <- listCensusMetadata(name = "timeseries/healthins/sahie", 
+    type = "variables")
+head(sahie_vars)
+
+test <- getCensus(name = "")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

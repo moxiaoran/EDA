@@ -11,9 +11,9 @@ Quandl.api_key("ccmdyEFNn7Uq9-py8oi2")
 
 
 # Load EIA data
-# library(EIAdata)
-# key = "46904b225ae6d0ae1b52640c2211c35c"
-# getCatEIA(key = "46904b225ae6d0ae1b52640c2211c35c")
+library(EIAdata)
+key = "46904b225ae6d0ae1b52640c2211c35c"
+getCatEIA(key = "46904b225ae6d0ae1b52640c2211c35c")
 
 # load mapbox key
 library(mapdeck)
@@ -21,8 +21,15 @@ set_token("pk.eyJ1IjoibW94aWFvcmFuIiwiYSI6ImNqbTZnaHNpdTBrbmMzcG4zMm41MXJrdG4ifQ
 
 # Load data from U.S. census API
 library(censusapi)
-#mycensuskey <- "0978f73a42dbc463dbe0ba33faf688d61ee27a83"
-#Sys.setenv(CENSUS_KEY=mycensuskey)
+mycensuskey <- "0978f73a42dbc463dbe0ba33faf688d61ee27a83"
+Sys.setenv(CENSUS_KEY=mycensuskey)
+
+# Load data from Bureau of Economic Analysis API
+
+library(bea.R)
+bea_key <- "6597E1AC-A744-477E-8117-2549861D0707"
+beaSets(bea_key)
+
 
 # load tigris package
 library(tigris)

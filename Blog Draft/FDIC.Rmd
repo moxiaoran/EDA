@@ -1,0 +1,124 @@
+---
+title: "FDIC"
+author: "Yifei Liu"
+date: "1/3/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(purrr)
+library(lubridate)
+library(scales)
+library(ggthemes)
+library(tidyquant)
+theme_set(theme_minimal())
+
+```
+
+
+```{r}
+files <- dir(path = "/Users/yifeiliu/Documents/R/data/EDA/FDIC/Data", pattern = "*_Liabilities.csv")
+
+files <- paste0("/Users/yifeiliu/Documents/R/data/EDA/FDIC/Data/", files)
+
+fdic_asset <- files %>%
+  map(read_csv) %>%
+  reduce(bind_rows)  
+
+fdic_asset <- fdic_asset %>% 
+  mutate(repdte = mdy(repdte),
+         year = year(repdte)) 
+
+
+path_1 <- c("/Users/yifeiliu/Documents/R/data/EDA/FDIC/institution/INSTITUTIONS2.CSV")
+institution_info <- read_csv(path_1)
+
+institution_info <- institution_info %>%
+  select(CERT, ACTIVE, BKCLASS, starts_with("CHANGEC"), CONSERVE, SPECGRP)
+
+fdic_bank <- fdic_2018 %>%
+  inner_join(institution_info, by = c(cert = "CERT"))
+
+
+```
+
+
+```{r}
+
+fdic_asset %>%
+  group_by(repdte) %>%
+  summarize(asset = sum(asset, na.rm = T),
+            liabilities = sum(liab)) %>%
+  gather(asset, liabilities, key = "type", value = "value") %>%
+  ggplot(aes(repdte, value, color = type)) +
+  expand_limits(y = 0) +
+  geom_line() +
+  scale_y_continuous(labels = dollar_format(prefix = "B$", scale = 0.000001))
+
+fdic_2018 <- fdic_asset %>% 
+  mutate(year = year(repdte)) %>%
+  filter(year == 2018) %>%
+  select(-year)
+
+fdic_asset %>%
+  filter(year > 2007) %>%
+  group_by(repdte) %>%
+  summarize(dep = sum(dep)) %>%
+  mutate(dep_c = dep - lag(dep)) %>%
+  ggplot(aes(repdte, dep_c)) +
+  geom_col() +
+  scale_y_continuous(labels = dollar_format(prefix = "B$", scale = 0.000001)) +
+  labs(x = NULL, y = NULL, title = "Quarterly change in loan balances") +
+  theme_tq()
+
+fdic_asset %>%
+  group_by(repdte) %>%
+  summarize(n = n()) %>%
+  arrange(n)
+
+fdic_2018 <- fdic_asset %>%
+  filter(year == 2018)
+
+
+
+
+fdic_asset %>%
+  filter(year > 2007) %>%
+  group_by(repdte) %>%
+  summarize(dep = sum(dep)) %>%
+  mutate(dep_c = dep - lag(dep)) %>%
+  ggplot(aes(repdte, dep_c)) +
+  geom_col() +
+  scale_y_continuous(labels = dollar_format(prefix = "B$", scale = 0.000001)) +
+  labs(x = NULL, y = NULL, title = "Quarterly change in loan balances") +
+  theme_tq()
+
+
+
+```
+
+See how major asset category change over time
+
+```{r}
+fdic_asset %>%
+  filter(repdte == "2018-09-30") %>%
+  group_by(name) %>%
+  summarize(dep = sum(dep)) %>%
+  arrange(desc(dep)) %>%
+  top_n(10) %>%
+  mutate(name = fct_reorder(name, dep)) %>%
+  ggplot(aes(name, dep, fill = name)) +
+  geom_col(show.legend = F) +
+  coord_flip()
+  
+
+
+```
+
+
+
