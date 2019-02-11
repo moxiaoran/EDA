@@ -1,0 +1,368 @@
+---
+title: "Fama French"
+author: "Yifei Liu"
+date: "1/15/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyquant)
+library(tidyverse)
+library(timetk)
+library(tibbletime)
+library(broom)
+library(scales)
+library(highcharter)
+library(rsample)
+library(yardstick)
+
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+theme_set(theme_minimal())
+theme_update(plot.title = element_text(hjust = .5))
+
+```
+
+
+
+## Calculated beta in capital asset pricing model
+
+get index price and return
+
+
+```{r}
+symbols <- c("SPY","EFA", "IJS", "EEM","AGG")
+
+stock_price <- tq_get(symbols,
+                      get = "stock.prices",
+                      from = "2012-12-31",
+                      to = "2019-01-01") %>%
+  group_by(symbol)
+
+stock_price
+
+stock_return <- stock_price %>%
+  tq_transmute(select = adjusted,
+               mutate_fun = periodReturn,
+               period = "monthly",
+               tpe = "log",
+               col_rename = "Ra")
+
+
+weight <- c(0.25, 0.25, 0.2, 0.2, 0.1)
+
+portfolio_re <- stock_return %>%
+  tq_portfolio(assets_col = symbol,
+               returns_col = Ra,
+               weights = weight,
+               col_rename = "Ra",
+               rebalance_on = "months") %>%
+  filter(date > "2012-12-31")
+
+# get market return, in this case we use S&P 500 as the market. 
+
+spy_re <- tq_get("SPY",
+                 get = "stock.prices",
+                 from = "2012-12-31",
+                 to = "2019-01-01") %>%
+  tq_transmute(select = adjusted,
+               mutate_fun = periodReturn,
+               period = "monthly",
+               type = "log",
+               col_rename = "Ra")
+
+portfolio_mk_re <- portfolio_re %>%
+  mutate(Rm = spy_re$Ra) %>%
+  filter(date > "2012-12-31")
+
+```
+
+We now have the monthly balance portfolio and market return. Now we can calculated the CAPM beta
+
+$${\beta}_{portfolio} = cov(R_p, R_m)/\sigma_m $$
+```{r}
+cov(portfolio_mk_re$Ra, portfolio_mk_re$Rm) / var(portfolio_mk_re$Rm)
+
+
+```
+
+We can calculated Beta by calculated beta fro each of our assets. 
+
+$${\beta}_{portfolio} ={\sum_{i=1}^n}W _i~{\beta}_i $$
+
+```{r}
+assets_beta <- stock_return %>%
+  nest(- symbol)
+
+
+assets_beta <- assets_beta %>%
+  mutate(model = map(data, ~ lm(Ra ~ spy_re$Ra, data = .)),
+         model = map(model, tidy)) %>%
+  unnest(model)
+
+assets_beta %>%
+  filter(term == "spy_re$Ra")
+
+beta_estimated <- assets_beta %>%
+  filter(term == "spy_re$Ra")
+
+cov(portfolio_mk_re$Ra, portfolio_mk_re$Rm) / var(portfolio_mk_re$Rm)
+
+sum(beta_estimated$estimate * weight)
+
+
+```
+
+we can see the individual asset beta together equal portfolio beta. 
+
+use tidyverse and broom to calculate beta and alpha for individual asset and beta for portfolio
+
+```{r}
+
+portfolio_beta <- portfolio_mk_re %>%
+  do(model = lm(Ra ~ Rm, data = .)) %>%
+  tidy(model) %>%
+  mutate(term = c("alpha", "beta"))
+
+# individual asset beta and alpha
+beta_tidy <- stock_return %>%
+  group_by(symbol) %>%
+  do(model = lm(Ra ~ spy_re$Ra, data = .)) %>%
+  tidy(model) %>%
+  mutate(term = c("alpha", "beta"))
+
+# portfolio beta
+
+beta_pf_tidy <- portfolio_re %>%
+  do(model = lm(Ra ~ spy_re$Ra, data = .)) %>%
+  tidy(model) %>%
+  mutate(term = c("alpha", "beta"))
+
+# test whether they are equal
+
+asset_beta <- beta_tidy %>%
+  filter(term == "beta")
+
+sum(asset_beta$estimate * weight)
+
+```
+Use CAPM beta in tidyquant to calculate Beta
+
+
+
+```{r}
+beta_tq <- portfolio_mk_re %>%
+  tq_performance(Ra = Ra,
+                 Rb = Rm,
+                 performance_fun = CAPM.beta)
+beta_tq
+
+```
+
+## Visualzing the CAPM 
+
+## Visualzing the relationship between portfolio returns, risk and market returns
+
+```{r}
+stock_return %>%
+  summarize(exp_re = mean(Ra),
+            sd = sd(Ra)) %>%
+  ggplot(aes(sd, exp_re, color = symbol)) +
+  geom_label(aes(label = symbol), show.legend = F, size = 4) +
+  geom_text(aes(x = sd(portfolio_re$Ra), y = mean(portfolio_re$Ra)), label = "Portfolio", show.legend = F) +
+  scale_x_continuous(label = percent_format()) +
+  labs(x = "Standard Deviation",
+       y = "Expected Return",
+       title = "Expected Monthly Return VS. Stand Deviation")
+
+
+```
+Let's direct visualized portfolio return and market return
+
+```{r}
+
+
+portfolio_mk_re %>%
+  ggplot(aes(Rm, Ra)) +
+  geom_point(color = "cornflowerblue") +
+  labs(x = "Market Return",
+       y = "Portfolio Return",
+       title = "Scatterplot",
+       caption = "Monthly balance portfolio, return monthly data") +
+  geom_abline(aes(intercept = portfolio_beta$estimate[1],
+                  slope = portfolio_beta$estimate[2]),
+              color = "purple",
+              size = .5) +
+   geom_smooth(method = "lm", se = F, color = "green", size = .5)
+
+
+
+```
+
+
+
+```{r}
+portfolio_augment <- portfolio_mk_re %>%
+  do(model = lm(Ra ~ Rm, data = .)) %>%
+  augment(model) %>%
+  mutate(date = portfolio_re$date)
+
+portfolio_augment
+
+portfolio_augment %>%
+  select(date, .fitted, Ra) %>%
+  gather(.fitted, Ra, key = "type", value = "return") %>%
+  ggplot(aes(date, return, color = type, group = type)) +
+  geom_line() +
+  scale_y_continuous(label = percent_format()) +
+  labs(x = "", y = "Return", title = "Fitted VS actual Returns")
+
+
+```
+
+
+```{r}
+
+portfolio_augment %>%
+  select(date, .fitted, Ra) %>%
+  mutate(actual = cumprod(1 + Ra),
+         fitted = cumprod(1 + .fitted)) %>%
+  gather(actual, fitted, key = "type", value = "return") %>%
+  ggplot(aes(date, return, group = type, color = type)) +
+  geom_line() +
+  labs(x = "", y = "", title = "Growth of a dollar: Actual VS Fitted") +
+  scale_y_continuous(label = dollar_format())
+
+```
+
+
+```{r}
+highchart() %>%
+  hc_title(text = "Portfolio v. market returns") %>%
+  hc_add_series_scatter(round(portfolio_mk_re$Ra, 4),
+                        round(portfolio_mk_re$Rm, 4),
+                        date = portfolio_mk_re$date) %>%
+  hc_xAxis(title = list(text = "Market Returns")) %>%
+  hc_yAxis(title = list(text = "Portfolio Returns")) %>%
+  hc_tooltip(formatter = JS("function(){
+                            return ('port return: ' + this.y + ' <br> mkt return: ' + this.x +  
+                            ' <br> date: ' + this.point.date)}"))
+
+
+
+```
+
+## Fama Frech
+
+FF multipel factor model of equity risk/return
+
+[Fama French Data](http://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html#HistBenchmarks)
+
+
+
+
+```{r}
+
+portfolio_re
+
+file <- "/Users/yifeiliu/Documents/R/data/EDA/Fama_French/Global_3_Factors_Daily.CSV"
+
+three_factor <- read_csv(file, skip = 3)
+
+three_factor <- three_factor %>%
+  rename(date = X1,
+         Mkt_rf = `Mkt-RF`) %>%
+  mutate(date = ymd(parse_date(as.character(date), "%Y%m%d")))
+
+three_factor %>%
+  filter(date >= "1990-07-01")
+
+
+```
+
+
+```{r}
+portfolio_ff <- portfolio_re %>%
+  inner_join(three_factor, by = "date") %>%
+  mutate(Mkt_rf = Mkt_rf / 100,
+         SMB  = SMB / 100,
+         HML = HML / 100,
+         RF = RF / 100,
+         r_excess = Ra - RF)
+
+portfolio_ff
+
+
+```
+
+
+```{r}
+ff_model <- portfolio_ff %>%
+  do(model = lm(r_excess ~ Mkt_rf + SMB + HML, data = .)) %>%
+  tidy(model, conf.int = T, conf.level = .95)
+
+ff_model %>%
+  mutate_if(is.numeric, funs(round(., 3))) %>%
+  filter(term != "(Intercept)") %>%
+  ggplot(aes(term, y = estimate, shape = term, color = term)) +
+  geom_point(show.legend = F) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), show.legend = F) +
+  labs(title = "FF 3-Factor coefficient for our portfolio",
+       x = "",
+       y = "coefficient",
+       caption = "data source: Fama French Website and Yahoo! Finance")
+
+```
+
+
+
+## Resampling Fama French 
+
+```{r}
+ff_five <- read_csv("/Users/yifeiliu/Documents/R/data/EDA/Fama_French/Global_5_Factors_Daily.CSV",
+                    skip = 3)
+
+five_factor <- ff_five %>%
+  rename(date = X1,
+         Mkt_rf = `Mkt-RF`) %>%
+  mutate(date = ymd(parse_date(as.character(date), "%Y%m%d"))) %>%
+  mutate_if(is.numeric, funs(. / 100)) %>%
+  select(-RF)
+
+
+five_factor
+
+stock_re_daily <- stock_price %>%
+  tq_transmute(select = adjusted,
+               mutate_fun = periodReturn,
+               period = "daily",
+               type = "log",
+               col_rename = "Ra") %>%
+  group_by(symbol)  %>%
+  filter(date >= "2013-01-01")
+
+portfolio_five <- stock_re_daily %>%
+  inner_join(five_factor, by = "date")
+  
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+

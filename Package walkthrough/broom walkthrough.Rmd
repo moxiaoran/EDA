@@ -1,0 +1,68 @@
+---
+title: "Broom walkthrough"
+author: "Yifei Liu"
+date: "1/15/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(broom)
+
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+```
+
+## Introduction to broom
+
+lm function
+
+```{r}
+lmfit <- lm(mpg ~ wt, data = mtcars)
+
+lmfit
+
+summary(lmfit)
+
+
+```
+
+```{r}
+tidy(lmfit)
+
+augment(lmfit)
+
+```
+
+glm function
+
+```{r}
+glmfit <- glm(am ~ wt, mtcars, family = "binomial")
+
+tidy(glmfit)
+augment(glmfit)
+
+glance(glmfit)
+
+```
+
+```{r}
+nlsfit <- nls(mpg ~ k / wt + b, mtcars, start = list(k = 1, b = 0))
+
+tidy(nlsfit)
+augment(nlsfit, mtcars)
+
+tt <- t.test(wt ~ am, mtcars)
+tidy(tt)
+
+wt
+
+```
+
+
+
+
+

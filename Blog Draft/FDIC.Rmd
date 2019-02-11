@@ -18,19 +18,39 @@ library(ggthemes)
 library(tidyquant)
 theme_set(theme_minimal())
 
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+
+
 ```
 
 
 ```{r}
 files <- dir(path = "/Users/yifeiliu/Documents/R/data/EDA/FDIC/Data", pattern = "*_Liabilities.csv")
 
+file_income <- dir(path = "/Users/yifeiliu/Documents/R/data/EDA/FDIC/Data", pattern = "*Income_and_Expense.csv")
+
+
 files <- paste0("/Users/yifeiliu/Documents/R/data/EDA/FDIC/Data/", files)
 
+file_income <- paste0("/Users/yifeiliu/Documents/R/data/EDA/FDIC/Data/", file_income)
+
+# read file
 fdic_asset <- files %>%
   map(read_csv) %>%
   reduce(bind_rows)  
 
+fdic_income <- file_income %>%
+  map(read_csv) %>%
+  reduce(bind_rows) 
+
+# mutate data frame
+
 fdic_asset <- fdic_asset %>% 
+  mutate(repdte = mdy(repdte),
+         year = year(repdte)) 
+
+fdic_income <- fdic_income %>% 
   mutate(repdte = mdy(repdte),
          year = year(repdte)) 
 
@@ -41,14 +61,26 @@ institution_info <- read_csv(path_1)
 institution_info <- institution_info %>%
   select(CERT, ACTIVE, BKCLASS, starts_with("CHANGEC"), CONSERVE, SPECGRP)
 
+fdic_2018 <- fdic_asset %>% 
+  mutate(year = year(repdte)) %>%
+  filter(year == 2018) %>%
+  select(-year)
+
 fdic_bank <- fdic_2018 %>%
   inner_join(institution_info, by = c(cert = "CERT"))
+
+
 
 
 ```
 
 
+## plot financial data
+
+
 ```{r}
+
+# asset and liability
 
 fdic_asset %>%
   group_by(repdte) %>%
@@ -60,21 +92,34 @@ fdic_asset %>%
   geom_line() +
   scale_y_continuous(labels = dollar_format(prefix = "B$", scale = 0.000001))
 
-fdic_2018 <- fdic_asset %>% 
-  mutate(year = year(repdte)) %>%
-  filter(year == 2018) %>%
-  select(-year)
+# loan balance change
 
 fdic_asset %>%
   filter(year > 2007) %>%
   group_by(repdte) %>%
   summarize(dep = sum(dep)) %>%
   mutate(dep_c = dep - lag(dep)) %>%
+  na.omit() %>%
   ggplot(aes(repdte, dep_c)) +
   geom_col() +
   scale_y_continuous(labels = dollar_format(prefix = "B$", scale = 0.000001)) +
   labs(x = NULL, y = NULL, title = "Quarterly change in loan balances") +
   theme_tq()
+
+# net income 
+
+fdic_income %>%
+  filter(year >= 2001) %>%
+  group_by(repdte) %>%
+  summarize(net_op = sum(noij, na.rm = T),
+            security_ga = sum(iglsec, na.rm = T)) %>%
+  gather(net_op, security_ga, key = "type", value = "value") %>%
+  mutate(type = reorder(type, value)) %>%
+  ggplot(aes(repdte, value, fill = type)) +
+  geom_bar(stat = "identity") +
+  scale_y_continuous(labels = dollar_format(prefix = "B$", scale = 0.000001)) +
+  theme_tq()
+  
 
 fdic_asset %>%
   group_by(repdte) %>%
@@ -83,8 +128,6 @@ fdic_asset %>%
 
 fdic_2018 <- fdic_asset %>%
   filter(year == 2018)
-
-
 
 
 fdic_asset %>%

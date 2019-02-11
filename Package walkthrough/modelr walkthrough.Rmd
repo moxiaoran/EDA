@@ -1,0 +1,87 @@
+---
+title: "modelr walkthrough"
+author: "Yifei Liu"
+date: "1/18/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+```{r}
+library(tidyverse)
+
+library(modelr) 
+options(na.action = na.warn)
+
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+theme_set(theme_minimal())
+
+```
+
+## A simple model
+
+
+```{r}
+ggplot(sim1, aes(x, y)) +
+  geom_point()
+
+models <- tibble(
+  a1 = runif(250, -20, 40),
+  a2 = runif(250, -5, 5)
+)
+
+ggplot(sim1, aes(x, y)) +
+  geom_abline(
+    aes(intercept = a1, slope = a2),
+    data = models, alpha = .2
+  ) +
+  geom_point()
+
+model1 <- function(a, data) {
+  a[1] + data$x * a[2]
+}
+
+measure_distance <- function(mod, data) {
+  diff <- data$y - model1(mod, data)
+  sqrt(mean(diff^2))
+}
+
+model1(c(7, 1.5), sim1)
+
+measure_distance(c(7, 1.5), sim1)
+
+sim1_dist <- function(a1, a2) {
+  measure_distance(c(a1, a2), sim1)
+}
+
+models <- models %>%
+  mutate(dist = purrr::map2_dbl(a1, a2, sim1_dist))
+
+
+ggplot(sim1, aes(x, y)) +
+  geom_point(size = 2, color = "grey30") +
+  geom_abline(aes(intercept = a1, slope = a2, color = -dist),
+              data = filter(models, rank(dist) <= 10))
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

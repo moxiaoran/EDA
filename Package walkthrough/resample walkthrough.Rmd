@@ -1,0 +1,58 @@
+---
+title: "rsample walkthrough"
+author: "Yifei Liu"
+date: "1/18/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(rsample)
+library(modelr)
+
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+theme_set(theme_minimal())
+options(na.action = na.warn)
+
+
+```
+
+
+
+
+
+```{r}
+bt_resamples <- bootstraps(mtcars, times = 3)
+
+first_resample <- bt_resamples[[1]]
+
+as.data.frame(first_resample)
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

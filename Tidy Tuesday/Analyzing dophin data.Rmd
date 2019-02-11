@@ -1,0 +1,190 @@
+---
+title: "Analyzing Dolphin data"
+author: "Yifei Liu"
+date: "1/16/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(scales)
+library(fuzzyjoin)
+library(survival)
+library(broom)
+
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+
+theme_set(theme_minimal())
+
+
+cetaceans_raw <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2018/2018-12-18/allCetaceanData.csv")
+
+cataceans <- cetaceans_raw %>%
+  select(-X1) %>%
+  mutate(birthYear = as.integer(birthYear),
+         age = if_else(status == "Died", year(statusDate) - birthYear, NA_real_))
+
+```
+
+
+```{r}
+cataceans %>%
+  count(acquisition, sort = T)
+
+
+cataceans %>%
+  count(status, sort = T)
+
+cataceans %>%
+  filter(status == "Died") %>%
+  select(birthYear, statusDate, age) %>%
+  filter(!is.na(birthYear), !is.na(statusDate)) %>%
+  ggplot(aes(age)) +
+  geom_histogram()
+
+cataceans %>%
+  count(species = fct_lump(species, 5), sort = T) %>%
+  mutate(species = reorder(species, n)) %>%
+  ggplot(aes(species, n, fill = species)) +
+  geom_col(show.legend = F) +
+  coord_flip() +
+  labs(x = "", y = "")
+
+cataceans %>%
+  mutate(species = fct_lump(species, 5)) %>%
+  filter(!is.na(birthYear), !is.na(statusDate)) %>%
+  ggplot(aes(species, age)) +
+  geom_boxplot() +
+  coord_flip()
+ 
+
+
+```
+
+```{r}
+cataceans %>%
+  count(acquisition,originLocation, sort = T) %>%
+  filter(originLocation != "Unknown")
+
+cataceans %>%
+  ggplot(aes(originDate, fill = acquisition)) +
+  geom_histogram()
+
+cataceans %>%
+  filter(originDate >= "1960-01-01") %>%
+  count(acquisition,
+        decade = 5 *(year(originDate) %/% 5)) %>%
+  complete(acquisition, decade, fill = list(n = 0)) %>%
+  mutate(acquisition = fct_reorder(acquisition, n, sum)) %>%
+  group_by(decade) %>%
+  mutate(percent = n / sum(n)) %>%
+  ggplot(aes(decade, percent, fill = acquisition)) +
+  geom_area() +
+  scale_y_continuous(labels = percent_format()) +
+  labs(x = "Year", y = "% of dolphins recorded")
+  
+
+
+```
+
+```{r}
+
+regexes <- tribble(
+  ~ regex, ~ category,
+  "Unknown", "Unknown",
+  "Florida|FL", "Florida",
+  "Gulf of Mexico", "Gulf of Mexico",
+  "Texas|Tx", "Texas",
+  "SeaWorld", "SeaWorld",
+  "Pacific", "Pacific Ocean",
+  "Atlantic", "Atlantic Ocean"
+)
+
+cataceans_annotated <- cataceans %>%
+  mutate(unique_id = row_number()) %>%
+  regex_left_join(regexes, c(originLocation = "regex")) %>%
+  distinct(unique_id, .keep_all = T) %>%
+  mutate(category = coalesce(category, originLocation))
+
+
+
+
+cataceans_annotated %>%
+  filter(acquisition == "Capture") %>%
+  mutate(category = fct_lump(category, 4),
+         category = fct_reorder(category, category, length)) %>%
+  ggplot(aes(originDate, fill = category)) +
+  geom_histogram()
+
+  
+```
+
+### Survival analysis
+
+```{r}
+
+dolphin_survival <- cataceans %>%
+  filter(status %in% c("Alive", "Died")) %>%
+  mutate(deathYear = ifelse(status == "Alive", 2017, year(statusDate)),
+        status = ifelse(status == "Alive", 0, 1),
+        age = deathYear - birthYear) %>%
+  filter(!is.na(deathYear)) %>%
+  select(birthYear, deathYear, status, sex, age, acquisition, species) %>%
+  filter(birthYear <= deathYear,
+         sex != "U")
+
+
+model <- survfit(Surv(age, status) ~ sex, dolphin_survival)
+
+plot(model)
+
+tidy(model) %>%
+  ggplot(aes(time, estimate, color = strata)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = .2) +
+  scale_y_continuous(labels = percent_format()) +
+  labs(y = "Estimate % survival")
+
+
+coxph(Surv(age, status) ~ sex, dolphin_survival) %>%
+  tidy()
+```
+
+
+```{r}
+
+model <- survfit(Surv(age, status) ~ acquisition, dolphin_survival)
+
+
+tidy(model) %>%
+  filter(strata != "acquisition=Unknown") %>%
+  ggplot(aes(time, estimate, color = strata)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = .2) +
+  scale_y_continuous(labels = percent_format()) +
+  labs(y = "Estimate % survival")
+
+```
+
+## what we practice today
+
+1. use fuzzyjoin package to turn couple of regular expresssions and turn them to categories. 
+2. tidy survial analysis To predict typical lifespans of dolphins base on sex, acquisition. Did a Cox Hazard regression model. 
+
+
+
+
+
+
+
+
+
+
+
+
