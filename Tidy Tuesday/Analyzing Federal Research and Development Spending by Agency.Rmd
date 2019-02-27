@@ -1,0 +1,81 @@
+---
+title: "Federal Research and Development Spending by Agency"
+author: "Yifei Liu"
+date: "2/12/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+library(tidyverse)
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+library(rjson)
+library(scales)
+library(streamgraph)
+
+theme_set(theme_minimal())
+
+federal_spend <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-02-12/fed_r_d_spending.csv")
+
+options(digits = 3)
+
+```
+
+see how those number trend
+
+
+```{r}
+# view us gdp, inflation adjusted
+
+federal_spend %>% 
+  ggplot(aes(year, gdp)) +
+  geom_line() +
+  expand_limits(y = 0) +
+  scale_y_continuous(labels = dollar_format(prefix = "T$", scale = 0.000000000001))
+
+# view total budge , inflation adjusted
+federal_spend %>%
+  ggplot(aes(year, total_outlays)) +
+  geom_line() +
+  expand_limits(y = 0) +
+  scale_y_continuous(labels = dollar_format(prefix = "B$", scale = 0.000000001))
+
+# View different agency and department spending trend
+streamgraph(federal_spend, key = "department", value = "rd_budget", date = "year", offset = "expand") %>%
+  sg_axis_x(2, "year", "%Y") %>%
+  sg_fill_tableau("cyclic") %>%
+  sg_legend(show = F, label = "Federal Agency Budget:")
+
+federal_spend %>%
+  mutate(percent = rd_budget / total_outlays) %>%
+  ggplot(aes(year, percent, fill = department)) +
+  geom_area() +
+  scale_y_continuous(labels = percent_format()) +
+  geom_label(aes(label = department))
+
+# 
+
+federal_pct <- federal_spend %>%
+  mutate(percent = rd_budget / total_outlays) 
+
+federal_pct %>%
+  streamgraph(key = "department", value = "percent", date = "year", offset = "zero", interpolate = "step") %>%
+  sg_legend(show = T, label = "Name:")
+
+```
+
+
+
+
+
+
+
+
+
+

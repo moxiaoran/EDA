@@ -1,0 +1,65 @@
+---
+title: "Tidyxl walkthrough"
+author: "Yifei Liu"
+date: "2/23/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+library(ggplot2)
+library(tidyxl)
+library(unpivotr)
+```
+
+
+```{r}
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+
+xlsx_cells(path, sheet = "clean") %>%
+  select(row, data_type, character, numeric)
+```
+
+London fileld
+
+```{r}
+
+files <- dir(path = "/Users/yifeiliu/Documents/R/data/EDA/tidytuesday/", pattern = ".xlsx")
+files_name <- paste("/Users/yifeiliu/Documents/R/data/EDA/tidytuesday/",files, sep = "")
+
+cells <- xlsx_cells(files_name, sheet = "2013-2016 Land & Livestock ") %>%
+  filter(!is_blank)
+
+formats <- xlsx_formats(files_name)
+
+bold <- formats$local$font$bold
+
+
+cells %>%
+  filter(row >= 3) %>%
+  behead("NNW", "unit") %>%
+  behead("NNW", "produce") %>%
+  behead("N", "year") %>%
+  behead_if(bold[local_format_id], direction = "WSW", name = "region") %>%
+  behead("W", "la") %>%
+  mutate(suppressed = if_else(is.na(character), FALSE, character == "#")) %>%
+  mutate(unit = if_else(col == 2,
+                        "Number of holings 2016", unit),
+         produce = if_else(col == 2, NA_character_, produce)) %>%
+  select(region, la, unit, produce, year, suppressed)
+
+```
+
+
+
+
+
+
+
+

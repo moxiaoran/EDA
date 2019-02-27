@@ -1,0 +1,167 @@
+---
+title: "Analyzing train delays in France"
+author: "Yifei Liu"
+date: "2/27/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(gganimate)
+library(lubridate)
+theme_set(theme_minimal())
+
+```
+
+
+```{r}
+full_trains <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-02-26/full_trains.csv") %>%  
+  mutate(pct_late_at_depature = num_late_at_departure / total_num_trips,
+         departure_station = str_to_title(departure_station),
+         arrival_station = str_to_title(arrival_station),
+         date = as.Date(sprintf("%d-%02d-01", year, month))) %>%
+  arrange(departure_station, arrival_station, date) %>%
+  fill(service)
+
+full_trains %>%
+  count(departure_station, sort = T)
+
+
+```
+
+Analyze one month data
+
+```{r}
+
+nov_2018 <- full_trains %>% 
+  filter(year == 2018, month == 11) %>%
+  arrange(total_num_trips) 
+
+nov_2018 %>%
+  mutate(departure_station = fct_lump(departure_station, 3))%>%
+  ggplot(aes(departure_station, pct_late_at_depature, fill = departure_station)) +
+  geom_boxplot(show.legend = F) +
+  geom_jitter(alpha = 0.5, show.legend = F) +
+  scale_y_continuous(labels = percent_format()) +
+  coord_flip() +
+  labs(x = "", y = "")
+
+nov_2018 %>%
+#  mutate(arrival_station = fct_infreq(fct_lump(arrival_station, prop = 0.01)),
+ #        departure_station = fct_infreq(fct_lump(departure_station, prop = 0.01))) %>%
+  mutate(arrival_station = fct_reorder(fct_lump(arrival_station, prop = 0.01), pct_late_at_depature),
+         departure_station = fct_reorder(fct_lump(departure_station, prop = 0.01), pct_late_at_depature)) %>%
+  group_by(arrival_station, departure_station) %>%
+  summarize(pct_late_at_depature = sum(num_late_at_departure) / sum(total_num_trips)) %>%
+  ggplot(aes(arrival_station, departure_station, fill = pct_late_at_depature)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", high = "red", midpoint = 0.25, labels = percent_format()) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(size = 12, face = "bold"),
+        plot.subtitle=element_text(size=6,face="italic", color="black")) +
+  labs(x = "Arrival Station",
+       y = "Departure Station",
+       fill = "% late at departure",
+       title = "Which routes have the most delayed trains?",
+       subtitle = "Station with only one arriving/departing route were lumped into 'Other'",
+       caption = "Date: 2018-11")
+  
+  
+```
+
+
+### Over time
+
+```{r}
+full_trains %>% 
+  filter(departure_station == "Lyon Part Dieu") %>%
+  ggplot(aes(date, pct_late_at_depature, color = arrival_station)) +
+  geom_line() +
+  scale_y_continuous(labels = percent_format()) +
+  expand_limits(y = 0)
+
+full_trains %>% 
+  filter(departure_station == "Nantes") %>%
+  ggplot(aes(date, pct_late_at_depature, color = arrival_station)) +
+  geom_line() +
+  scale_y_continuous(labels = percent_format()) +
+  expand_limits(y = 0)
+
+by_departure_station_month <- full_trains %>%
+  group_by(departure_station  = fct_lump(departure_station, prop = 0.02),
+           date) %>%
+  summarize_at(vars(contains("num")), sum) %>%
+  ungroup() %>%
+  mutate(pct_late_at_depature = num_late_at_departure / total_num_trips)
+
+by_departure_station_month %>%
+  mutate(departure_station = fct_reorder(departure_station, -pct_late_at_depature, last)) %>%
+  ggplot(aes(date, pct_late_at_depature, color = departure_station)) +
+  geom_line() +
+  scale_y_continuous(labels = percent_format()) +
+  labs(x = "",
+       y = "% late at departure",
+       color = "Dearture Station")
+
+by_departure_station_month %>%
+  ggplot(aes(date, departure_station, fill = pct_late_at_depature)) +
+  geom_tile() +
+  scale_fill_gradientn(colors = c("steelblue", "yellow", "red"))
+  
+
+```
+
+
+
+
+```{r}
+by_departure_station_month <- full_trains %>%
+  group_by(departure_station = case_when(service == "National" ~ departure_station, 
+                                         TRUE ~ paste0(departure_station, " - (International)")),
+           service, 
+           year,
+           month = fct_reorder(month.name[month], month)) %>%
+  summarize_at(vars(contains("num")), sum) %>%
+  ungroup() %>%
+  mutate(pct_late_at_depature = num_late_at_departure / total_num_trips)
+
+by_departure_station_month %>%
+  mutate(departure_station = fct_reorder(departure_station, - (service == "International") + pct_late_at_depature)) %>%
+  ggplot(aes(month, departure_station, fill = pct_late_at_depature * 100)) +
+  geom_tile() +
+  scale_fill_gradientn(colors = c("steelblue", "yellow", "red")) +
+  facet_wrap( ~ year, nrow = 1, scales = "free_x") +
+  labs(fill = "% late at departure", 
+       x = "", y = "Departure Station",
+       title = "Percentage of delayed train per departure station",
+       subtitle = "Ordered by the average delay, with internaitonal routes on the bottom",
+       caption = "Data: SNCP") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        plot.title = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(face = "italic", size = 8),
+        axis.ticks = element_blank(),
+        axis.title.y = element_text(hjust = 1, size = 7))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
