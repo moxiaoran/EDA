@@ -1,0 +1,246 @@
+---
+title: "Analyzing data on women in the workplace"
+author: "Screen Record from David Robinson youtube video"
+date: "3/5/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(unpivotr)
+library(tidyxl)
+library(rvest)
+library(scales)
+library(plotly)
+library(blscrapeR)
+library(gridExtra)
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+theme_set(theme_minimal())
+```
+
+
+## Search female labour work force
+
+```{r}
+jobs_gender <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-03-05/jobs_gender.csv")
+
+earnings_female <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-03-05/earnings_female.csv") 
+
+employed_gender <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-03-05/employed_gender.csv") 
+
+
+```
+
+```{r}
+
+summarize_job_gener <- function(tbl) {
+  tbl %>%
+    summarize(total_earnings = sum(total_earnings * total_workers) / sum(total_workers),
+              total_earnings_male = sum(total_earnings_male * workers_male, na.rm = T) / sum(workers_male[!is.na(total_earnings_male)]),
+              total_earnings_female = sum(total_earnings_female * workers_female, na.rm = T) / sum(workers_female[!is.na(total_earnings_female)]),
+              total_workers = sum(total_workers),
+              workers_male = sum(workers_male),
+              workers_female = sum(workers_female)) %>%
+    mutate(wage_percent_of_male = total_earnings_female / total_earnings_male)
+}
+
+by_year_major_category <- jobs_gender %>%
+  group_by(year, major_category) %>%
+  summarize_job_gener() 
+
+# show salary trend in all major category 
+by_year_major_category %>%
+  mutate(major_category = fct_reorder(major_category, -total_earnings)) %>%
+  ggplot(aes(year, total_earnings, color = major_category)) +
+  geom_line() +
+  expand_limits(y = 0)
+
+# reorder the data show female wage as percentage of male wage cross all major category
+by_year_major_category %>%
+  mutate(major_category = fct_reorder(major_category, -wage_percent_of_male)) %>%
+  ggplot(aes(year, wage_percent_of_male, color = major_category)) +
+  geom_line() +
+  scale_y_continuous(labels = percent_format())
+
+
+```
+
+
+```{r}
+by_minor_category_2016 <- jobs_gender %>%
+  filter(year == 2016) %>%
+  group_by(major_category, minor_category) %>%
+  summarize_job_gener() %>%
+  ungroup()
+```
+
+
+```{r}
+by_minor_category_2016 %>%
+  mutate(minor_category = fct_reorder(minor_category, wage_percent_of_male)) %>%
+  ggplot(aes(minor_category, wage_percent_of_male, fill = major_category)) +
+  geom_col() +
+  coord_flip() +
+  scale_y_continuous(labels = percent_format())
+```
+
+```{r}
+p <- jobs_gender %>%
+  filter(year == 2016, major_category == "Healthcare Practitioners and Technical") %>%
+  arrange(desc(wage_percent_of_male)) %>%
+  ggplot(aes(workers_female / total_workers, 
+             total_earnings_female / total_earnings_male, 
+             size = total_workers, 
+             label = occupation)) +
+  geom_point() +
+  scale_size_continuous(range = c(1, 10)) +
+  labs(size = "Total # of workers",
+        x = "% of workforce reported as female",
+       y = "% of median female salary / median male")
+
+ggplotly(p)
+
+```
+
+
+```{r}
+p <- jobs_gender %>%
+  filter(year == 2016, major_category == "Computer, Engineering, and Science",
+         total_workers >20000) %>%
+  arrange(desc(wage_percent_of_male)) %>%
+  ggplot(aes(workers_female / total_workers, 
+             total_earnings,
+             size = total_workers,
+             color = minor_category,
+             label = occupation)) +
+  geom_point() +
+  scale_size_continuous(range = c(1, 10)) +
+  labs(size = "Total # of workers",
+        x = "% of workforce reported as female",
+       y = "Median Salary in the occupation") +
+  scale_x_continuous(labels = percent_format()) +
+  scale_y_continuous(labels = dollar_format()) +
+  expand_limits(y = 0)
+
+ggplotly(p)
+
+p <- jobs_gender %>%
+  filter(major_category == "Computer, Engineering, and Science",
+         total_workers >20000) %>%
+  mutate(percent_female = workers_female / total_workers,
+              wage_percent_female = total_earnings_female / total_earnings_male) %>%
+  ggplot(aes(percent_female,
+             wage_percent_female,
+             size = total_workers,
+             color = minor_category,
+             label = occupation)) +
+  geom_point(aes(frame = year)) +
+  scale_size_continuous(range = c(1, 10)) +
+  labs(size = "Total # of workers",
+        x = "% of workforce reported as female",
+       y = "Median Salary in the occupation") +
+  scale_x_continuous(labels = percent_format()) +
+  scale_y_continuous(labels = dollar_format()) +
+  expand_limits(y = 0)
+
+ggplotly(p) %>%
+  layout(
+    title = "Gender disparity and pay gap in {frame}",
+    yaxis = list(
+      title = "% of median female salary / median mal"
+    ),
+    xaxis = list(
+      title = "% of workforce reported as female"
+    )
+  ) %>%
+  animation_opts(
+    frame = 100, 
+    transition = 0, 
+    #66ff66raw = FALSE
+  ) %>%
+  animation_slider(
+    currentvalue = list(
+      prefix = "Year: "
+    )
+  )
+
+
+
+
+
+
+```
+
+
+earning female salary
+
+show female salary earning as percent of male salary cross different age group
+
+```{r}
+earnings_female %>% 
+  ggplot(aes(Year, percent, color = group)) +
+  geom_point() +
+  geom_smooth(se = F) +
+  scale_y_continuous(labels = percent_format()) +
+  labs(x = "", y = "Female salary earning as % of male",
+       title = "Have we achieve workforce payment equality yet?",
+       caption = "Data Source: BLS @moxiaoranying") +
+  theme_bw()
+
+```
+
+
+In this general trend, we can observer cross all age group, the salary gap between man and women are shrinking. 
+
+
+
+
+```{r}
+gender_emp <- employed_gender %>%
+  gather(total_full_time:part_time_male, key = "cate", value = "value") %>%
+  mutate(gender = case_when(
+    cate %in% c("total_full_time", "total_part_time") ~ "Total",
+    cate %in% c("full_time_female", "part_time_female") ~ "Female",
+    TRUE ~ "Male"
+  ),
+  value = value / 100)
+
+cols <- c("total_full_time" = "#66ff66", "full_time_female" = "#66ff66", "full_time_male" = "#66ff66",
+          "total_part_time" = "#ff6666", "part_time_female" = "#ff6666", "part_time_male" = "#ff6666")
+
+
+
+gender_emp %>% 
+  ggplot(aes(year, value, fill = cate)) +
+  geom_area(show.legend = F) +
+  facet_wrap(~ gender) +
+  scale_y_continuous(labels = percent_format()) +
+  scale_fill_manual(values = cols) +
+  labs(x = "", y = "",
+       title = "% of workforce work at Par time and Full time",
+       caption = "Source: BLS @moxiaoranying",
+       subtitle = "Green is full time, red is par time")
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
