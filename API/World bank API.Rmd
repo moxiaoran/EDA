@@ -13,9 +13,19 @@ https://blogs.worldbank.org/opendata/introducing-data360r-data-power-r
 https://tcdata360.worldbank.org/tools/data360r
 
 
+```{r}
+library(tidyverse)
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+library(scales)
+library(wbstats)
+theme_set(theme_minimal())
+```
+
 
 ```{r}
-library(data360r)
+library(wbstats)
+
 df <- get_metadata360(site='tc', metadata_type = 'indicators')
 
 
@@ -74,6 +84,74 @@ institutions_map %>%
 
 
 ```
+
+
+
+### Visualize GDP growth 
+
+```{r}
+gdp_vars <- wbsearch(pattern = "GDP growth")
+
+gdp_grwoth <- wb(indicator = "NY.GDP.MKTP.KD.ZG", startdate = 2000, enddate = 2017)
+
+oecd_gdp <- gdp_grwoth %>%
+  filter(iso3c %in% c("CAN", "DEU", "FRA", "GBR", "ITA", "JPN", "USA")) %>%
+  mutate(date = as.numeric(date),
+         value = value / 100)
+
+oecd_gdp %>%
+  ggplot(aes(date, value)) +
+  facet_wrap( ~ country) +
+  geom_line() +
+  geom_hline(yintercept = 0, col = "grey") +
+  geom_vline(xintercept = 2007, lty = "dashed") +
+  labs(x = "", y = "",
+       title = "Quarterly GDP growth before and after 2007 Financial Crisis.",
+       subtitle = "Source: World Bank") +
+  scale_y_continuous(labels = percent_format()) +
+  theme(panel.grid = element_blank(),
+        strip.text.x = element_text(size = 10, face = "bold"))
+  
+
+oecd_summary <- oecd_gdp %>%
+  group_by(date) %>%
+  summarize(gdp_low = min(value),
+            gdp_max = max(value),
+            gpd_mean = mean(value))
+
+
+ggplot(oecd_summary) +
+  geom_line(size = 1, aes(date, gpd_mean)) +
+  geom_ribbon(aes(x = date, ymin = gdp_low, ymax = gdp_max),alpha = 0.2) +
+  geom_line(data = oecd_gdp, aes(date, value, color = country), alpha = 0.2) +
+  geom_hline(yintercept = 0, col = "grey") +
+  scale_y_continuous(labels = percent_format()) +
+  geom_vline(xintercept = 2007, lty = 2) +
+  annotate(geom = "text", x = 2006, y = -0.02, label = "Global Financial Crisis", angle = 90) +
+  labs(x = "", y = "", 
+       title = "GDP grwoth of G7 in Relation to Financial Crisis",
+       subtitle = "Data: Word Bank",
+       color = "") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5, face = "italic"))
+
+
+```
+
+
+### Finding available data with wb_cachelist
+
+
+```{r}
+str(wb_cachelist, max.level = 1)
+
+wb_cachelist$indicators %>%
+  count(source)
+
+```
+
+
+
 
 
 

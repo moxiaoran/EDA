@@ -1,0 +1,35 @@
+---
+title: "United_nations_comtrade_API"
+author: "Yifei Liu"
+date: "3/10/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(comtradr)
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+theme_set(theme_minimal())
+```
+
+
+```{r}
+q <- ct_search(reporters = "China",
+               partners = "USA",
+               trade_direction = "exports",
+               start_date = 2010,
+               end_date = 2012)
+
+str(q)
+
+```
+
+
+
+
+
