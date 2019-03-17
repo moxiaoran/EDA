@@ -1,0 +1,218 @@
+---
+title: "Board_games"
+author: "Yifei Liu"
+date: "3/15/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=F, warning= F}
+library(tidyverse)
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+library(broom)
+library(glmnet)
+library(tidytext)
+library(Matrix)
+theme_set(theme_minimal())
+library(scales)
+```
+
+```{r}
+board_games_raw <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-03-12/board_games.csv")
+
+holdout_set <- board_games_raw %>%
+  filter(game_id %% 5 == 0)
+
+board_games <- board_games_raw %>%
+  filter(game_id %% 5 != 0)
+
+
+```
+
+
+### EDA
+
+
+```{r}
+board_games %>%
+  count(publisher, sort = T)
+
+
+board_games %>%
+  filter(max_playtime > 5, max_playtime < 1000) %>%
+  ggplot(aes(max_playtime / 60)) +
+  geom_histogram(binwidth = 0.25) +
+  scale_x_log10(breaks = 2 ^ seq(-2, 4))
+
+board_games %>%
+  count(year_published , sort = T) %>%
+  ggplot(aes(year_published, n)) +
+  geom_line()
+
+
+
+
+
+```
+
+
+Categorical variables:
+
+```{r}
+categorical_variables <- board_games %>%
+  select(game_id, name, family, category, artist, designer) %>%
+  gather(type, value, -game_id, -name) %>%
+  filter(!is.na(value)) %>%
+  separate_rows(value, sep = ",") %>%
+  arrange(game_id)
+
+categorical_counts <- categorical_variables %>%
+  count(type, value, sort = T) 
+
+
+categorical_counts %>%
+  group_by(type) %>%
+  top_n(20, n) %>%
+  ungroup() %>%
+  mutate(value = fct_reorder(value, n),
+         type = fct_reorder(type, n, .desc = T)) %>%
+  ggplot(aes(value, n, fill = type)) +
+  geom_col(show.legend = F) +
+  coord_flip() +
+  facet_wrap( ~ type, scales = "free_y") +
+  labs(title = "Most common categories", x = "") +
+  theme(plot.title = element_text(hjust = 0.4, face = "bold"))
+  
+```
+
+
+### Predict average rating
+
+
+```{r}
+board_games %>%
+  mutate(decade = 10 * (year_published %/% 10)) %>%
+  group_by(decade) %>%
+  summarize(average_rating = mean(average_rating)) %>%
+  ggplot(aes(decade, average_rating)) +
+  geom_line()
+```
+Applied lm model on this dataset, since we already have numeric variable and categorical variables
+
+we need to split the dataset into training and testing dataset. 
+
+```{r}
+
+lm(average_rating ~ 
+     log2(max_players + 1) + 
+     log2(max_playtime + 1) +
+     year_published, board_games) %>%
+  tidy()
+
+
+```
+
+
+```{r}
+by_categorical <- board_games %>%
+  inner_join(categorical_variables, by = c("game_id", "name")) %>%
+  select(type, value, average_rating) %>%
+  group_by(type, value) %>%
+  summarize(games = n(),
+            average_rating = mean(average_rating)) %>%
+  arrange(desc(games))
+
+
+board_games %>%
+  inner_join(categorical_variables, by = c("game_id", "name")) %>%
+  filter(type ==  "designer") %>%
+  mutate(value = fct_lump(value, 15),
+         value = fct_reorder(value, average_rating)) %>%
+  ggplot(aes(value, average_rating)) +
+  geom_boxplot() +
+  coord_flip()
+
+
+```
+
+
+Conclusion: Categorical variables can be correlated with higher/lower rated games
+
+```{r}
+
+non_categorical_features <- board_games %>%
+  transmute(game_id, 
+            name,
+            year = year_published - 1950,
+            log2_max_players = log2(max_players + 1),
+            log2_max_playtime = log2(max_playtime + 1)) %>%
+  gather(feature, value, - game_id, -name)
+
+
+features <- categorical_variables %>%
+  unite(feature, type, value, sep = ": ") %>%
+  add_count(feature) %>%
+  filter(n >= 20) %>%
+  mutate(value = 1) %>%
+  bind_rows(non_categorical_features)
+
+# x
+
+features_matrix <- features %>%
+  cast_sparse(game_id, feature, value)
+
+# y
+
+ratings <- board_games$average_rating[match(rownames(features_matrix), board_games$game_id)]
+
+cv_lasso <- cv.glmnet(features_matrix, ratings)
+
+
+cv_lasso$lambda.1se
+
+cv_lasso$glmnet.fit %>%
+  tidy() %>%
+  filter(lambda == cv_lasso$lambda.1se) %>%
+  arrange(desc(estimate)) %>% 
+  filter(term != "(Intercept)") %>%
+  top_n(25, abs(estimate)) %>%
+  mutate(term = str_to_title(term),
+         term = fct_reorder(term, estimate)) %>%
+  ggplot(aes(term, estimate)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Largest coefficient in our predictive model",
+       subtitle = "Based on a LASSO regression",
+       x = "",
+       y = "Coefficient")
+
+```
+
+
+### Further Analysis: DIY
+
+Due to time limit, there're some futher analysis lift on the table
+
+1. Use yardstick package and compare lasso model to other model. Since lasso is a linear model, every term just been added in, it doesn't allow non linear relationship and it doesn't allow for interaction, such as you are both a compaign game and you have this designer. 
+
+2. Lasso regression is very intuitive. Such as even though you don't really understand how you choose the value of lambda, but you do understand the coefficient. 
+
+3. In this analysis, we do some EDA and ML, beside compare model, you can do to look at the word used in the describtion that would give more information about average_rating. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
