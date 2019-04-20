@@ -1,0 +1,279 @@
+---
+title: "gganimate"
+author: "Yifei Liu"
+date: "3/17/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Objective: learn how to use gganimate package
+
+```{r}
+library(tidyverse)
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+library(demography)
+library(gganimate)
+library(forecast)
+library(scales)
+library(foreign)
+library(data.table)
+library(transformr)
+library(av)
+theme_set(theme_minimal())
+```
+
+
+```{r}
+#> Loading required package: ggplot2
+
+# We'll start with a static plot
+p <- ggplot(iris, aes(x = Petal.Width, y = Petal.Length)) + 
+  geom_point()
+
+plot(p)
+
+```
+
+```{r}
+anim <- p + transition_states(Species,
+                          transition_length = 2,
+                          state_length = 1)
+
+anim
+```
+
+```{r}
+anim +
+  ease_aes("bounce-in-out")
+
+
+```
+
+```{r}
+anim +
+  labs(title = 'Now showing {closest_state}',
+       subtitle = 'Frame {frame} of {nframes}')
+  
+```
+
+```{r}
+ggplot(iris, aes(x = Petal.Width, y = Petal.Length)) +
+  geom_line(aes(group = rep(1:50, 3)), color = "grey") +
+  geom_point()
+
+```
+
+```{r}
+ggplot(iris, aes(x = Petal.Width, y = Petal.Length)) +
+  geom_point(aes(color = Species)) +
+  transition_states(Species, 
+                    transition_length = 2,
+                    state_length = 1) +
+  ease_aes("cubic-in-out")
+
+
+```
+
+```{r}
+ggplot(iris, aes(x = Petal.Width, y = Petal.Length)) + 
+  geom_point(aes(colour = Species, group = 1L)) +
+  transition_states(Species,
+                    1,1)
+
+```
+
+
+```{r}
+anim <- ggplot(iris, aes(x = Petal.Width, y = Petal.Length)) + 
+  geom_point(aes(colour = Species), size = 2) + 
+  transition_states(Species,
+                    transition_length = 2,
+                    state_length = 1)
+
+anim + enter_fade() +
+  exit_fade() 
+
+```
+
+```{r}
+anim + 
+  enter_fade() + enter_drift(x_mod = -1) + 
+  exit_shrink() + exit_drift(x_mod = 5)
+
+```
+
+
+
+```{r}
+ggplot(airquality) +
+  geom_line(aes(Day, Temp, group = Month))
+
+
+last_plot() +
+  transition_reveal(Day)
+
+
+
+```
+
+```{r}
+
+frmort <- set.upperage(fr.mort, 100)
+
+frmort <- tibble(
+      year = rep(frmort$year, rep(length(frmort$age), length(frmort$year))),
+      age = rep(frmort$age, length(frmort$year)),
+      female = c(frmort$rate$female),
+      male = c(frmort$rate$male),
+    ) %>%
+  gather(male, female, key = "sex", value = "mortrate")
+
+frmort
+
+
+```
+
+```{r}
+frmort %>%
+  ggplot(aes(x = age, y = mortrate, group = year, col = year)) +
+    geom_line() +
+    facet_grid(~sex) +
+    scale_y_log10() +
+    xlab("Age") + ylab("Log mortality") +
+    scale_color_gradientn(colours = rainbow(13))
+
+```
+Animate this plot
+
+```{r}
+frmort %>% 
+  filter(year >= 1900) %>%
+  ggplot(aes(x = age, y = mortrate, group = year, col = year)) +
+    geom_line() +
+    facet_grid(~sex) +
+    scale_y_log10() +
+    xlab("Age") + ylab("Log mortality") +
+    scale_color_gradientn(colours = rainbow(13)) +
+    transition_time(year) +
+    ease_aes("linear") +
+    shadow_mark(color = "grey70") +
+    labs(x = "Age", y = "Log mortality",
+         title = 'year: {frame_time}')
+
+
+```
+
+
+```{r}
+
+record1 <- read.spss('/Users/yifeiliu/Documents/R/data/EDA/Record1.sav', to.data.frame = T)
+params <- expand.grid(b0 = seq(0,300, length.out = 2), b1 = seq(-0.1, 0.1, length.out = 2))
+
+params <- data.frame(b0 = c(0, 0, 200, 200, 400, 400, 134.14),
+  b1 = c(-0.1, 0.1, -0.1, 0.1, -0.1, 0.1, 0.09612))
+  record_anim <- lapply(1:nrow(params), function(i) {
+  b0 <- params$b0[i]
+  b1 <- params$b1[i]
+  record_anim <- record1 %>%
+  mutate(sales_pred = b0 + b1 * adverts) %>%
+  mutate(residual = sales - sales_pred) %>%
+  mutate(residual2 = residual^2) %>%
+  mutate(m_sales = mean(sales)) %>%
+  mutate(param_b0 = b0, param_b1 = b1, state = i)
+  return(record_anim)
+}) %>% rbindlist
+
+
+```
+
+
+```{r}
+ggplot(record_anim) +
+  geom_rect(aes(xmin=adverts, xmax = adverts + residual,ymin = sales, ymax = sales_pred,fill = residual^2), alpha = 0.8) +
+  geom_point(aes(x = adverts, y = sales)) +
+  geom_line(aes(x = adverts, y = sales_pred), color = 'black', size = 1) +
+  scale_fill_viridis_c('Squared Residual') +
+  scale_x_continuous('Advertising Budget\n(thousands of pounds)') +
+  scale_y_continuous('Record Sales\n(thousands)') +
+  coord_fixed(ratio = 2) +
+  theme(legend.position = 'bottom') +
+  transition_states(state, transition_length = 3, state_length = 1) +
+  labs(title = 'Finding the least sum of squares') +
+  ease_aes('sine-in-out')
+
+
+```
+
+
+## GDP 
+
+article https://datascienceplus.com/how-to-build-animated-bar-plots-using-r/
+
+
+```{r}
+gdp <- read_csv("https://raw.githubusercontent.com/amrrs/animated_bar_charts_in_R/master/data/gdp_tidy.csv")
+
+gdp_x <- gdp %>%
+  group_by(year) %>%
+  mutate(country_name = fct_reorder(country_name, value),
+         rank = rank(value)) %>%
+  group_by(country_name) %>%
+  filter(rank <= 10) %>%
+  ungroup()
+
+x <- gdp_x %>%
+  ggplot(aes(country_name, value, fill = country_name)) +
+  geom_col(show.legend = F, alpha = 0.8) +
+  coord_flip()+
+  labs(y = "GDP", x = "")
+
+
+gdp_formatted <- gdp %>%
+  group_by(year) %>%
+  # The * 1 makes it possible to have non-integer ranks while sliding
+  mutate(rank = rank(-value),
+         Value_rel = value/value[rank==1],
+         Value_lbl = paste0(" ",round(value/1e9))) %>%
+  group_by(country_name) %>% 
+  filter(rank <=10) %>%
+  ungroup()
+
+staticplot = ggplot(gdp_formatted, aes(rank, group = country_name, 
+                fill = as.factor(country_name), color = as.factor(country_name))) +
+  geom_tile(aes(y = value/2,
+                height = value,
+                width = 0.9), alpha = 0.8, color = NA) +
+  geom_text(aes(y = 0, label = paste(country_name, " ")), vjust = 0.2, hjust = 1) +
+  geom_text(aes(y=value,label = Value_lbl, hjust=0)) +
+  coord_flip(clip = "off", expand = FALSE) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_x_reverse()
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

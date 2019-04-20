@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
+```{r echo = F, message=F, warning=F}
 library(tidyquant)
 library(tidyverse)
 library(timetk)
@@ -19,12 +19,11 @@ library(scales)
 library(highcharter)
 library(rsample)
 library(yardstick)
-
+library(awtools)
+library(hrbrthemes)
 detach("package:dplyr", unload=TRUE)
 library(dplyr)
 theme_set(theme_minimal())
-theme_update(plot.title = element_text(hjust = .5))
-
 ```
 
 
@@ -40,18 +39,18 @@ symbols <- c("SPY","EFA", "IJS", "EEM","AGG")
 stock_price <- tq_get(symbols,
                       get = "stock.prices",
                       from = "2012-12-31",
-                      to = "2019-01-01") %>%
+                      to = "2017-12-31") %>%
   group_by(symbol)
 
-stock_price
+
 
 stock_return <- stock_price %>%
   tq_transmute(select = adjusted,
                mutate_fun = periodReturn,
                period = "monthly",
                tpe = "log",
-               col_rename = "Ra")
-
+               col_rename = "Ra") %>%
+  filter(date > "2012-12-31")
 
 weight <- c(0.25, 0.25, 0.2, 0.2, 0.1)
 
@@ -60,24 +59,27 @@ portfolio_re <- stock_return %>%
                returns_col = Ra,
                weights = weight,
                col_rename = "Ra",
-               rebalance_on = "months") %>%
-  filter(date > "2012-12-31")
+               rebalance_on = "months")
+  
+
+
 
 # get market return, in this case we use S&P 500 as the market. 
 
 spy_re <- tq_get("SPY",
                  get = "stock.prices",
                  from = "2012-12-31",
-                 to = "2019-01-01") %>%
+                 to = "2017-12-31") %>%
   tq_transmute(select = adjusted,
                mutate_fun = periodReturn,
                period = "monthly",
                type = "log",
-               col_rename = "Ra")
+               col_rename = "Rm") %>%
+  filter(date > "2012-12-31")
 
 portfolio_mk_re <- portfolio_re %>%
-  mutate(Rm = spy_re$Ra) %>%
-  filter(date > "2012-12-31")
+  inner_join(spy_re, by = "date") 
+  
 
 ```
 
@@ -100,15 +102,15 @@ assets_beta <- stock_return %>%
 
 
 assets_beta <- assets_beta %>%
-  mutate(model = map(data, ~ lm(Ra ~ spy_re$Ra, data = .)),
+  mutate(model = map(data, ~ lm(Ra ~ spy_re$Rm, data = .)),
          model = map(model, tidy)) %>%
   unnest(model)
 
 assets_beta %>%
-  filter(term == "spy_re$Ra")
+  filter(term == "spy_re$Rm")
 
 beta_estimated <- assets_beta %>%
-  filter(term == "spy_re$Ra")
+  filter(term == "spy_re$Rm")
 
 cov(portfolio_mk_re$Ra, portfolio_mk_re$Rm) / var(portfolio_mk_re$Rm)
 
@@ -119,7 +121,7 @@ sum(beta_estimated$estimate * weight)
 
 we can see the individual asset beta together equal portfolio beta. 
 
-use tidyverse and broom to calculate beta and alpha for individual asset and beta for portfolio
+use tidyverse and broom to calculate beta and alpha for individual asset and beta for portfolio.
 
 ```{r}
 
@@ -128,30 +130,21 @@ portfolio_beta <- portfolio_mk_re %>%
   tidy(model) %>%
   mutate(term = c("alpha", "beta"))
 
+
 # individual asset beta and alpha
 beta_tidy <- stock_return %>%
   group_by(symbol) %>%
-  do(model = lm(Ra ~ spy_re$Ra, data = .)) %>%
+  do(model = lm(Ra ~ spy_re$Rm, data = .)) %>%
   tidy(model) %>%
   mutate(term = c("alpha", "beta"))
 
 # portfolio beta
-
 beta_pf_tidy <- portfolio_re %>%
-  do(model = lm(Ra ~ spy_re$Ra, data = .)) %>%
+  do(model = lm(Ra ~ spy_re$Rm, data = .)) %>%
   tidy(model) %>%
   mutate(term = c("alpha", "beta"))
-
-# test whether they are equal
-
-asset_beta <- beta_tidy %>%
-  filter(term == "beta")
-
-sum(asset_beta$estimate * weight)
-
 ```
-Use CAPM beta in tidyquant to calculate Beta
-
+Use CAPM beta in tidyquant to calculate Beta.
 
 
 ```{r}
@@ -175,17 +168,16 @@ stock_return %>%
   geom_label(aes(label = symbol), show.legend = F, size = 4) +
   geom_text(aes(x = sd(portfolio_re$Ra), y = mean(portfolio_re$Ra)), label = "Portfolio", show.legend = F) +
   scale_x_continuous(label = percent_format()) +
+  scale_y_continuous(labels = percent_format()) +
   labs(x = "Standard Deviation",
        y = "Expected Return",
        title = "Expected Monthly Return VS. Stand Deviation")
 
-
 ```
+
 Let's direct visualized portfolio return and market return
 
 ```{r}
-
-
 portfolio_mk_re %>%
   ggplot(aes(Rm, Ra)) +
   geom_point(color = "cornflowerblue") +
@@ -197,7 +189,9 @@ portfolio_mk_re %>%
                   slope = portfolio_beta$estimate[2]),
               color = "purple",
               size = .5) +
-   geom_smooth(method = "lm", se = F, color = "green", size = .5)
+   geom_smooth(method = "lm", se = F, color = "green", size = .5) +
+  scale_x_continuous(label = percent_format()) +
+  scale_y_continuous(labels = percent_format())
 
 
 
@@ -219,7 +213,11 @@ portfolio_augment %>%
   ggplot(aes(date, return, color = type, group = type)) +
   geom_line() +
   scale_y_continuous(label = percent_format()) +
-  labs(x = "", y = "Return", title = "Fitted VS actual Returns")
+  labs(x = "", y = "Return", title = "Fitted VS actual Returns") +
+  a_plex_theme() +
+  a_main_fill() +
+  a_main_color() +
+  theme(legend.position = "bottom") 
 
 
 ```
@@ -229,13 +227,16 @@ portfolio_augment %>%
 
 portfolio_augment %>%
   select(date, .fitted, Ra) %>%
-  mutate(actual = cumprod(1 + Ra),
-         fitted = cumprod(1 + .fitted)) %>%
+  mutate(actual = 1000 * cumprod(1 + Ra),
+         fitted = 1000 *cumprod(1 + .fitted)) %>%
   gather(actual, fitted, key = "type", value = "return") %>%
   ggplot(aes(date, return, group = type, color = type)) +
   geom_line() +
-  labs(x = "", y = "", title = "Growth of a dollar: Actual VS Fitted") +
-  scale_y_continuous(label = dollar_format())
+  labs(x = "", y = "", title = "Growth of a dollar: Actual VS Fitted",
+       subtitle = "Initial Investment $1000") +
+  scale_y_continuous(label = dollar_format()) +
+  theme_tq()
+  
 
 ```
 
@@ -243,9 +244,9 @@ portfolio_augment %>%
 ```{r}
 highchart() %>%
   hc_title(text = "Portfolio v. market returns") %>%
-  hc_add_series_scatter(round(portfolio_mk_re$Ra, 4),
-                        round(portfolio_mk_re$Rm, 4),
-                        date = portfolio_mk_re$date) %>%
+  hc_add_series(round(portfolio_mk_re$Ra, 4),
+                        date = portfolio_mk_re$date,
+                        type = "scatter") %>%
   hc_xAxis(title = list(text = "Market Returns")) %>%
   hc_yAxis(title = list(text = "Portfolio Returns")) %>%
   hc_tooltip(formatter = JS("function(){
@@ -269,18 +270,19 @@ FF multipel factor model of equity risk/return
 
 portfolio_re
 
-file <- "/Users/yifeiliu/Documents/R/data/EDA/Fama_French/Global_3_Factors_Daily.CSV"
+file <- "/Users/yifeiliu/Documents/R/data/EDA/Fama_French/Global_3_Factors.csv"
 
 three_factor <- read_csv(file, skip = 3)
 
 three_factor <- three_factor %>%
   rename(date = X1,
          Mkt_rf = `Mkt-RF`) %>%
-  mutate(date = ymd(parse_date(as.character(date), "%Y%m%d")))
+  mutate_if(is.character, as.numeric) %>%
+  mutate(date =  rollback(ymd(parse_date_time(date, "%Y%m") + months(1))))
 
-three_factor %>%
-  filter(date >= "1990-07-01")
 
+
+map_chr(three_factor, class)
 
 ```
 
@@ -295,8 +297,6 @@ portfolio_ff <- portfolio_re %>%
          r_excess = Ra - RF)
 
 portfolio_ff
-
-
 ```
 
 
@@ -304,6 +304,10 @@ portfolio_ff
 ff_model <- portfolio_ff %>%
   do(model = lm(r_excess ~ Mkt_rf + SMB + HML, data = .)) %>%
   tidy(model, conf.int = T, conf.level = .95)
+
+ff_model %>%
+  mutate_if(is.numeric, ~ round(.,3)) %>%
+  select(-statistic)
 
 ff_model %>%
   mutate_if(is.numeric, funs(round(., 3))) %>%
@@ -317,6 +321,150 @@ ff_model %>%
        caption = "data source: Fama French Website and Yahoo! Finance")
 
 ```
+
+
+## Rolling Fama French
+
+### get rolling lm
+```{r}
+window = 12
+
+rolling_lm <- rollify(.f = function(r_excess, Mkt_rf, SMB, HML) {
+  lm(r_excess ~ Mkt_rf + SMB + HML)
+  },
+  window = window, 
+  unlist = F
+)
+
+```
+
+
+### rolling betas
+
+```{r}
+rolling_ff_beta <- portfolio_ff %>%
+  mutate(rolling_ff = rolling_lm(r_excess, Mkt_rf, SMB, HML)) %>%
+  mutate(tidied = map(rolling_ff, tidy, conf.int = T)) %>%
+  unnest(tidied) %>%
+  slice(-1:-(window -1)) %>%
+  rename(beta = estimate, factor = term) %>%
+  select(date, factor, beta, conf.low, conf.high) %>%
+  filter(factor != "(Intercept)") %>%
+  group_by(factor)
+
+
+rolling_ff_rsquared <- portfolio_ff %>%
+  mutate(rolling_ff = rolling_lm(r_excess, Mkt_rf, SMB, HML)) %>%
+  slice(-1:-(window -1)) %>%
+  mutate(glanced = map(rolling_ff, glance)) %>%
+  unnest(glanced) %>%
+  select(date,r.squared, adj.r.squared, p.value) %>%
+  mutate_if(is.numeric, ~ round(., digits = 4))
+
+```
+
+### Visulaizing Rolling Fama French
+
+```{r}
+# visualized rolling beta
+rolling_ff_beta %>%
+  ggplot(aes(date, beta, color = factor)) +
+  geom_line() +
+  labs(title= "12-Month Rolling FF Factor Betas",
+       x = "rolling betas") +
+  scale_x_date(breaks = pretty_breaks(n = 10)) +
+  theme_tq()
+
+
+```
+
+### Highchart
+visualizing rolling r squared
+
+```{r}
+highchart(type = "stock") %>%
+  hc_add_series(rolling_ff_rsquared, 
+                hcaes(x = date, y = adj.r.squared),
+                type = "line",
+                color = "cornflowerblue",
+                id = "R Sqauared") %>%
+  hc_title(text = "Rolling Fmam French 3 Factor Adjusted R Square") %>%
+  hc_add_theme(hc_theme_flat()) %>%
+  hc_yAxis(max = 1, min = 0) 
+  # hc_add_theme(hc_theme_economist())
+```
+## Highcharting jobs friday
+
+```{r}
+codes_names_tbl <- tribble(
+        ~ symbol, ~ names,
+        "NPPTTL", "ADP Estimate",
+        "PAYEMS", "Nonfarm Employment",
+        "USCONS", "Construction",
+        "USTRADE",   "Retail/Trade",
+        "USPBS",  "Prof/Bus Serv",
+        "MANEMP",    "Manufact",
+        "USFIRE",    "Financial",
+        "USMINE",   "Mining",
+        "USEHS",    "Health Care",
+        "USWTRADE",    "Wholesale Trade",
+        "USTPU",    "Transportation",
+        "USINFO",    "Info Sys",
+        "USLAH",    "Leisure",
+        "USGOVT",    "Gov",
+        "USSERV",    "Other Services"
+)
+
+fred_empl_data <- tq_get(codes_names_tbl$symbol,                         
+                          get = "economic.data",             
+                          from = "2007-01-01")
+
+fred_empl_data <- fred_empl_data %>%
+  inner_join(codes_names_tbl, by = "symbol") %>%
+  select(names, date, price) %>%
+  rename(sector = names,
+         employment = price)
+
+```
+
+show employment change over time
+
+```{r}
+emply_chagne <- fred_empl_data %>%
+  group_by(sector) %>%
+  mutate(monthly_change = employment - lag(employment)) %>%
+  na.omit() %>%
+  mutate(sign = case_when(
+           monthly_change > 0 ~ "Positive",
+           T ~ "Negative"))
+
+emply_chagne %>%
+  filter(sector == "Nonfarm Employment") %>%
+  ggplot(aes(date, monthly_change, fill = sign)) +
+  geom_col(alpha = 0.85) +
+  scale_fill_manual(values = c("pink", "lightgreen")) +
+  labs(title = "Monthly Private Employment Change",
+       subtitle = "Total emp, since 2008",
+       y = "Monthly chagne (thousands)",
+       x = "",
+       caption = "Data source: FRED | Author, @yifeiliu",
+       fill = "") +
+  theme_tq() 
+  
+emply_chagne %>%
+  filter(sector == "Nonfarm Employment") %>%
+  mutate(color_bar = case_when(sign == "Negative" ~ "#ffe6ea",
+                               T ~ "#6495ed")) %>%
+  hchart( type = "column", 
+                pointWidth = 5,
+                hcaes(x = date,
+                      y = monthly_change,
+                      color = color_bar),
+                name = "monthly change")
+
+```
+
+
 
 
 
@@ -348,21 +496,35 @@ stock_re_daily <- stock_price %>%
 portfolio_five <- stock_re_daily %>%
   inner_join(five_factor, by = "date")
   
-
-
-
 ```
 
 
 
 
 
+refernce linke: https://rviews.rstudio.com/categories/reproducible-finance-with-r/
 
 
 
+```{r}
+file_path <- "/Users/yifeiliu/Documents/R/data/EDA/sp500.xlsx"
+
+cells <- xlsx_cells(file_path, sheets = "Ratios")
+formats <- xlsx_formats(file_path)
+
+select(cells, row, col, data_type, character, numeric, local_format_id)
+
+bold <- formats$local$font$bold
+indent <- formats$local$alignment$indent
 
 
+cells %>%
+  filter(row >= 12L,
+         !is_blank) %>%
+  behead("")
+  behead("N", "time") %>%
+  select(row, col, numeric, character, time)
 
-
+```
 
 

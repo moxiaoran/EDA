@@ -1,0 +1,286 @@
+---
+title: "ggplot_walkthrough"
+author: "Yifei Liu"
+date: "3/29/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+library(awtools)
+library(ggbeeswarm)
+library(rvest)
+library(albersusa) # devtools::install_github("hrbrmstr/albersusa")
+library(RColorBrewer)
+library(awtools)
+library(scales)
+library(ggplot2)
+library(gghighlight)
+library(ggforce)
+library(ggthemes)
+library(hrbrthemes)
+theme_set(theme_minimal())
+```
+
+
+Make amazing chart
+
+```{r}
+# Set demand and supply funtions: 
+demand <- function(q) {(q - 10)^2}
+supply <- function(q) {q^2 + 2*q + 8}
+
+# Set a range of price: 
+x <- 0:5
+
+# Equilibrium quantity: 
+q <- uniroot(function(x) demand(x) - supply(x), range(x))$root
+
+# Equilibrium price: 
+p <- supply(q)
+
+# Make a draft plot: 
+
+ggplot() +
+  stat_function(aes(x, color = "Demand"), fun = demand, size = 1) +
+  stat_function(aes(x, color = "Supply"), fun = supply, size = 1) + 
+  annotate("point", x = q, y = p, color = "grey10") + 
+  annotate("segment", x = q, xend = q, y = 0, yend = p,
+           linetype = "dashed", color = "grey30") +
+  annotate("segment", x = 0, xend = q, y = p, yend = p,
+           linetype = "dashed", color = "grey30") ->> chart
+
+# Adjust plot: 
+z <- seq(0, q, 0.01)
+
+chart + 
+  geom_ribbon(aes(x = z, ymin = supply(z), ymax = p, fill = "Producer surplus"), alpha = 0.15) +
+  geom_ribbon(aes(x = z, ymin = p, ymax = demand(z), fill = "Consumer surplus"), alpha = 0.15) + 
+  labs(x = "Quantity", y = "Price", 
+       title = "An Example of Using geom_ribbon() for Making\na Cunsumer and Producer Surplus Plot") + 
+  scale_x_continuous(expand = c(0, 0), breaks = q, labels = "q*") +
+  scale_y_continuous(expand = c(0, 0), breaks = p, labels = "p*") + 
+  theme_classic() + 
+  theme(panel.grid = element_blank(),
+        legend.position = c(0.95, 0.95), 
+        legend.justification = c(1, 1),
+        legend.spacing = unit(0, "cm"), 
+        legend.margin = margin(0, 0, 0, 0, "cm")) + 
+  scale_fill_manual(values = c("purple", "orange"), name = "") + 
+  scale_color_manual(values = c("purple", "orange"), name = "") 
+```
+
+
+## Natural Disasters from the NYT article
+
+```{r}
+disasters <- read.csv('https://static01.nyt.com/newsgraphics/2017/08/29/expensive-storms/79088630ae1af934d7840e104a0e3f1e8a6c7bf1/data-2.tsv', 
+                      sep='\t', 
+                      stringsAsFactors = FALSE)
+
+costs <- disasters %>%
+  mutate(
+    Disaster=case_when(
+      col2 == '#397dc2' ~ 'Hurricane',
+      col2 == '#efba2b' | col2 == '#9b0e11' ~ 'Drought/Fire',
+      col2 == '#699d8f' ~ 'Flooding',
+      col2 == '#9d76b0' ~ 'Storm',
+      col2 == '#61c6e2' ~ 'Winter Storm'
+    )
+  )
+
+ggplot(costs, aes(x=year,y=Disaster,color=Disaster))+
+  ggbeeswarm::geom_quasirandom(alpha=.75,aes(size=cost),groupOnX = FALSE, show.legend = FALSE)+
+  a_dark_theme() +
+  a_main_color() +
+  labs(title='Billion Dollar Natural Disasters',
+       subtitle='The most costly naturdal disasters from 1980 - 2017',
+       y='',
+       caption='Data: New York Times\nOriginal Article: "The Cost of Hurricane Harvey: Only One Recent Storm Comes Close"')
+
+```
+
+see cumluate cost
+
+```{r}
+costs %>%
+  group_by(Disaster) %>%
+  arrange(Disaster, year) %>%
+  mutate(total = cumsum(cost)) %>%
+  ggplot(aes(year, total, fill = Disaster, group = Disaster)) +
+  geom_line(size = .5, aes(color = Disaster)) +
+  geom_point(aes(color = Disaster)) +
+  a_plex_theme() +
+  a_main_fill() +
+  a_main_color() +
+  labs(title='Natural Disasters and Runaway Cost',
+       subtitle='Running total of cost of natural disasters (over $1 billion in estimated cost) from 1980 - 2017',
+       caption='Data: New York Times\nOriginal Article: "The Cost of Hurricane Harvey: Only One Recent Storm Comes Close"')
+
+```
+
+use ggforce to show most damaaged diaster
+
+```{r}
+top_ten <- costs %>%
+  group_by(Disaster) %>%
+  top_n(10, wt = cost)
+
+labels <- costs %>%
+  group_by(Disaster) %>%
+  top_n(1, wt = cost) %>%
+  filter(!Disaster %in% c('Winter Storm', 'Flooding'))
+
+ggplot(top_ten, aes(year, cost, color = Disaster, group = Disaster)) +
+  geom_point() +
+  geom_mark_circle(data = labels, aes(label = name,
+                                      color = Disaster,
+                                      fill = NA),
+                   label.family = 'IBM Plex Mono',
+                   label.fontsize = 8,
+                   label.fill = NA,
+                   label.fontface = 'plain') +
+  a_plex_theme() +
+  a_main_fill() +
+  labs(title='Most Costly Disasters',
+       subtitle='Top ten natural disasters (over $1 billion in estimated cost) by group 1980 - 2017',
+       caption='Data: New York Times\nOriginal Article: "The Cost of Hurricane Harvey: Only One Recent Storm Comes Close"')
+
+
+```
+
+
+Blog Post: [Anatomy of a logistic growth curve](https://www.tjmahr.com/anatomy-of-a-logistic-growth-curve/)
+```{r}
+points <- tibble(
+  age = c(38, 45, 52, 61, 80, 74), 
+  prop = c(0.146, 0.241, 0.571, 0.745, 0.843, 0.738))
+
+colors <- list(
+  data = "#41414550",
+  fit = "#414145")
+
+ggplot(points) +
+  aes(x = age, y = prop) +
+  geom_point(size = 3.5, color = colors$data) +
+  scale_x_continuous(
+    limits = c(0, 96),
+    breaks = extended_breaks(Q = c(24, 12))
+  ) +
+  scale_y_continuous(limits = c(0, NA),
+                     labels = percent_format(accuracy = 1)) +
+  labs(x = "Age in month", y = "Intelligibility")
+
+```
+
+### gghighlight
+
+```{r}
+d <- purrr::map_dfr(
+  letters,
+  ~ data.frame(
+      idx = 1:400,
+      value = cumsum(runif(400, -1, 1)),
+      type = .,
+      flag = sample(c(TRUE, FALSE), size = 400, replace = TRUE),
+      stringsAsFactors = FALSE
+    )
+)
+
+ggplot(d) +
+  geom_line(aes(idx, value, color = type))
+
+
+d_flitered <- d %>%
+  group_by(type) %>%
+  filter(max(value) > 18) %>%
+  ungroup()
+
+ggplot(d_flitered) +
+  geom_line(aes(idx, value, color = type))
+
+ggplot(d) +
+  geom_line(aes(idx, value, color = type)) +
+  gghighlight(max(value) > 18)
+
+ggplot(d) +
+  geom_line(aes(idx, value, color = type)) +
+  gghighlight(max(value) > 15, mean(flag) > 0.15)
+
+ggplot(d) +
+  geom_line(aes(idx, value, color = type)) +
+  gghighlight(max(value) > 15, mean(flag) > 0.15) +
+  facet_wrap(~ type)
+
+```
+
+```{r}
+p <- ggplot(iris, aes(Sepal.Length, fill = Species)) +
+  geom_histogram() +
+  gghighlight()
+
+p
+# histogram
+p + facet_wrap(~ Species)
+
+# point
+
+d2 <- sample_n(d, 20)
+
+ggplot(d2, aes(idx, value)) +
+  geom_point() +
+  gghighlight(value > 0, label_key = type)
+
+# non-logical predicate
+ggplot(d, aes(idx, value, color = type)) +
+  geom_line() +
+  gghighlight(max(value), max_highlight = 5L)
+
+
+ggplot(d) +
+  geom_line(aes(idx, value, color = type)) +
+  gghighlight(max(value > 18), label_params = list(size = 8))
+
+
+p <- ggplot(d2, aes(idx, value)) +
+  geom_point() +
+  gghighlight(value > 0, use_direct_label = F)
+
+p$data
+
+p + geom_label(aes(label = type),
+               hjust = 1, vjust = 1, fill = "purple", color = "white", alpha = 0.5)
+
+d <- data.frame(
+  idx =   c(1, 2, 3, 4, 1, 2, 3, 4),
+  value = c(10, 11, 12, 13, 4, 8, 16, 32),
+  cat1 =  rep(c("a", "b"), each = 4),
+  cat2 =  rep(rep(c("1-2", "3-4"), each = 2), 2),
+  stringsAsFactors = FALSE
+)
+
+p <- ggplot(d, aes(idx, value, colour = cat1)) +
+  geom_line() +
+  facet_wrap(vars(cat2))
+
+p +
+  gghighlight(max(value) > 10, use_facet_vars = TRUE) +
+  labs(title = "use_facet_vars = T")
+
+```
+
+
+
+
+
+
+
+
+
+

@@ -20,11 +20,12 @@ library(dplyr)
 library(scales)
 library(wbstats)
 theme_set(theme_minimal())
+library(data360r)
 ```
 
 
 ```{r}
-library(wbstats)
+
 
 df <- get_metadata360(site='tc', metadata_type = 'indicators')
 
@@ -35,8 +36,9 @@ global_competitiveness_index <- data_53 %>%
   tbl_df() %>%
   setNames(c("country_iso3", "country", "indicator", "subindicator_type",
            '2007', '2008', '2009','2010' , '2011', '2012', '2013',
-           '2014', "2015", '2016', '2017', "dataset_id")) %>%
-  dplyr::filter(str_detect(indicator, " pillar"))
+           '2014', "2015", '2016', '2017', "2018", "dataset_id")) %>% 
+  select(-"2018") %>%
+  filter(str_detect(indicator, " pillar"))
   
 
 ```
@@ -50,7 +52,7 @@ world <- map_data("world") %>%
   tbl_df()
 
 institutions <- global_competitiveness_index %>%
-  dplyr::filter(str_detect(indicator, "Institutions"),
+  filter(str_detect(indicator, "Institutions"),
                 subindicator_type == "Value")
 
 institutions_processed <- institutions %>%
@@ -85,6 +87,15 @@ institutions_map %>%
 
 ```
 
+### Governmant efficiency
+
+```{r}
+gov_eff <- get_data360(site = "tc", indicator_id = c(388, ))
+
+gov_eff %>%
+  filter(`Country Name` == "France")
+
+```
 
 
 ### Visualize GDP growth 

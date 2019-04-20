@@ -1,0 +1,40 @@
+---
+title: "gt walkthrough"
+author: "Yifei Liu"
+date: "3/30/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(gt) # remotes::install_github("rstudio/gt")
+library(tidyquant)
+```
+
+```{r}
+codelist %>%
+  filter(country.name.en == "Australia") %>%
+  select(continent,country.name.en, iso2c)
+
+```
+
+```{r}
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+

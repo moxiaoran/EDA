@@ -1,0 +1,119 @@
+---
+title: "yield curve"
+author: "Yifei Liu"
+date: "4/19/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(gganimate)
+library(lubridate)
+library(tidyquant)
+library(timetk)
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+library(ggthemes)
+library(scales)
+library(gapminder)
+theme_set(theme_minimal())
+
+```
+
+
+```{r}
+treasury_yield <- tq_get("USTREASURY/YIELD",
+                         get = "quandl")
+
+treasury_yield <- treasury_yield %>%
+  setNames(c("date", "1 m", "2 m", "3 m", "6 m", "1 y", "2 y",
+           "3 y", "5 y", "7 y", "10 y", "20 y", "30 y"))
+
+yield_order <- factor(names(treasury_yield)[-1], levels = names(treasury_yield)[-1])
+
+treasury_yield_df <- treasury_yield %>%
+  select(-'2 m') %>%
+  gather(-date, key = "term", value = "rate") %>%
+  mutate(year = year(date),
+         month = month(date),
+         day = mday(date)) %>%
+  group_by(term, year, month) %>%
+  filter(day == min(day)) %>%
+  ungroup() %>%
+  select(1:3, year, month) %>%
+  mutate(term = fct_relevel(term, levels = names(treasury_yield)[-1])) %>%
+  mutate(distance = case_when(
+    term == "1 m" ~ 1,
+    term == "3 m" ~ 5,
+    term == "6 m" ~ 8,
+    term == "1 y" ~ 13,
+    term == "2 y" ~ 16,
+    term == "3 y" ~ 20,
+    term == "5 y" ~ 25,
+    term == "7 y" ~ 31,
+    term == "10 y" ~ 40,
+    term == "20 y" ~ 50,
+    term == "30 y" ~ 60
+  ),
+  rate = rate / 100)
+
+treasury_yield_df <- treasury_yield_df %>%
+  mutate(yearday = as.Date(date, "%Y-%m"))
+
+treasury_yield_df %>%
+  filter(year %in% c(2014:2018)) %>%
+  ggplot(aes(distance, rate, group = interaction(year, month), color = month)) +
+  geom_point(show.legend = F, size = 1) +
+  geom_line(show.legend = F) +
+  a_plex_theme() +
+  a_main_fill() +
+  scale_y_continuous(labels = percent_format()) +
+  scale_x_continuous(breaks = c(1,5, 8, 13, 16, 20, 25, 31, 40, 50, 60),
+                     labels = names(treasury_yield)[-1][-2]) +
+  labs(title = "Federal Reserve Rate",
+       x = "", y = "",
+       subtitle = "Monthly US Treasury yield curve since 1990",
+       caption = "Data Source: FRED, Author: @yifeiliu")+
+  theme(plot.caption = element_text(hjust = 0, family = "IBM Plex Mono"))
+
+
+p <- treasury_yield_df %>%
+  ggplot(aes(distance, rate, group = interaction(year, month), color = year)) +
+  geom_point(show.legend = F) +
+  geom_line(show.legend = F) +
+  scale_color_gradientn(colours = rainbow(10)) +
+  transition_time(date) +
+  ease_aes('linear') +
+  shadow_mark(colour = "grey70", alpha = 0.3) +
+  a_plex_theme() +
+  a_main_fill() +
+  labs(title = 'Federal Reserve Rate: {frame_time}',
+       x = "", y = "",
+       subtitle = "Monthly US Treasury yield curve since 1990",
+       caption = "Data Source: FRED, Author: @yifeiliu") +
+  scale_y_continuous(labels = percent_format()) +
+  scale_x_continuous(breaks = c(1,5, 8, 13, 16, 20, 25, 31, 40, 50, 60),
+                     labels = names(treasury_yield)[-1][-2]) +
+  theme(plot.caption = element_text(hjust = 0),
+        plot.title = element_text(face = "bold"))
+  
+
+# anim_save("us_treasury_yield", animation = p, height = 7, width = 7 * 2)
+
+# animate(p, height = 800, width =1600)
+
+# anim_save("yield_curve.gif")
+
+```
+
+
+
+
+
+
+
+
+

@@ -18,13 +18,23 @@ library(kableExtra)
 library(scales)
 library(finstr)
 library(XBRL)
+library(tidyverse)
+library(scales)
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+theme_set(theme_minimal())
 ```
+
+
 We can get the stock price data of FAANG and XLK
+
 ```{r}
-Ra <- c("AAPL", "GOOGL","AMZN", "NFLX", "FB") %>%
+asset_price  <- c("AAPL", "GOOGL","AMZN", "NFLX", "FB") %>%
   tq_get(get = "stock.prices",
          from = "2010-01-01",
-         to = "2018-12-1")  %>%
+         to = "2018-12-1")  
+
+Ra <- asset_price %>%
   group_by(symbol) %>%
   tq_transmute(select = adjusted,
                mutate_fun = periodReturn,
@@ -44,11 +54,25 @@ Rb
 RaRb <- left_join(Ra, Rb, by = "date")
 ```
 
+Plot the Ra data
+
+```{r}
+asset_price %>%
+  ggplot(aes(x = date, y = adjusted, color = symbol)) +
+  geom_line() +
+  theme_tq() +
+  labs(x = "", y = "") +
+  scale_y_continuous(labels = dollar_format())
+
+```
+
+
 
 Now we can quick do some performance analysis on the stocks.
 1. CAPM
 2. Information Ratio
 3. VaR, ES
+4. table.Correlation
 
 ```{r}
 
@@ -68,10 +92,41 @@ Ra %>%
   tq_performance(performance_fun = VaR,
                  method = "historical")
 
+RaRb %>%
+  tq_performance(Ra = Ra, Rb = Rb, 
+                 performance_fun = table.Correlation)
+
+RaRb %>%
+  tq_performance(Ra = Ra, 
+                 performance_fun = AverageDrawdown)
+
+
 ```
 
 
+
+
 ## Portfolios
+
+
+Efficient Frontier
+
+```{r}
+
+RaRb %>%
+  tq_performance(Ra = Ra, 
+                 performance_fun = table.AnnualizedReturns) %>%
+  ggplot(aes(AnnualizedStdDev, AnnualizedReturn)) +
+  geom_point() +
+  geom_label(aes(label = symbol, color = symbol), show.legend = F) +
+  scale_x_continuous(labels = percent_format()) +
+  scale_y_continuous(labels = percent_format()) +
+  labs(x = "Annualized sd", y = "Annualized Return") +
+  theme_tq()
+
+
+```
+
 
 We can use weight vector such as rep(0.2, 5) 
 
@@ -263,11 +318,28 @@ faang_key_ratio %>%
 ```
 
 
-```{r}
+### Small Cap
 
+```{r}
+russell_2000 <- tq_index("RUSSELL2000") %>%
+  tbl_df()
   
+rusell_2000_price <- tq_get(x = "^RUT")
 
 ```
+
+```{r}
+russell_2000 %>%
+  count(sector, wt = weight) %>%
+  mutate(sector = fct_reorder(sector, n)) %>%
+  ggplot(aes(sector, n)) +
+  geom_col(fill = "midnightblue") +
+  coord_flip() +
+  scale_y_continuous(labels = percent_format()) +
+  labs(x = "", y = "")
+
+```
+
 
 
 

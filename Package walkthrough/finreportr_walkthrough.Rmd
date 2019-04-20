@@ -1,0 +1,36 @@
+---
+title: "Finreportr Walkthrough"
+author: "Yifei Liu"
+date: "4/15/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(finreportr)
+library(edgarWebR)
+```
+
+```{r}
+ticker <- "0000314949"
+
+glenmade <- company_information("0000314949")
+
+glenmade_fill <- company_filings(ticker, type = "13F-", count = 40)
+
+nrow(glenmade_fill)
+
+glenmade_fill$md_href <- paste0("[Link](", glenmade_fill$href, ")")
+
+knitr::kable(tail(glenmade_fill)[, c("type", "filing_date", "accession_number", "size",
+                               "md_href")],
+             col.names = c("Type", "Filing Date", "Accession No.", "Size", "Link"),
+             digits = 2,
+             format.args = list(big.mark = ","))
+
+```
+
+

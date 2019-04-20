@@ -1,0 +1,37 @@
+---
+title: "reticulate Walkthrough"
+author: "Yifei Liu"
+date: "4/12/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(reticulate)
+use_python("/usr/local/bin/python3")
+```
+
+```{python}
+import pandas
+import scipy
+flights = pandas.read_csv("project2data.csv")
+
+def square(value):
+  new_value = value**2
+  return(new_value)
+  
+test = square(4)
+
+
+```
+
+```{r}
+library(ggplot2)
+x <- py$flights
+
+head(x)
+
+```

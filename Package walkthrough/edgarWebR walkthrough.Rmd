@@ -1,0 +1,94 @@
+---
+title: "edgarWebR walkthrough"
+author: "Yifei Liu"
+date: "3/25/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(edgarWebR)
+library(tidyverse)
+library(tidyquant)
+library(hrbrthemes)
+library(scales)
+theme_set(theme_minimal())
+```
+
+
+## A regular company analysis
+
+```{r}
+intel_filing <- company_filings("INTC", type = "10-k", count = 40)
+
+
+
+```
+
+
+
+
+
+
+
+get penn capital fillings
+
+```{r}
+penn_capital <- company_filings(x = "0001618627", type = "N-CSR")
+
+```
+
+```{r}
+small_cap <- tq_get(x = c("IJR", "^RUT"),
+                      from = "2001-01-01")
+
+smallcap_ret <- small_cap %>% 
+  group_by(symbol) %>%
+  filter(date >= "2014-12-01") %>%
+  tq_transmute(select = adjusted,
+               periodReturn,
+               period = "monthly",
+               type = "log",
+               col_rename = "Ra") %>%
+  mutate(wealth = 100000 * cumprod(1 + Ra)) 
+
+p <- smallcap_ret %>%
+  ggplot(aes(date, wealth, color = symbol)) +
+  geom_line(size = 1) +
+  labs(title = "S&P SmallCap 600 vs Russell 1000",
+       y = "",
+       subtitle = "Initial gross investment $100,000 dollar made on Dec 1, 2015",
+       caption = "yifeiliutemple.com / @yifeiliu") +
+  scale_y_continuous(labels = dollar_format()) +
+  scale_color_manual(name = '',
+                     labels = c("Russell 2000",
+                                "S&P SmallCap 600"),
+                     values = c("midnightblue", "red")) 
+
+p +
+  theme_ipsum() +
+  theme(plot.title = element_text(color = "#EC0108", hjust = 0.5),
+        plot.subtitle = element_text(color = "black", face = "italic"))
+  
+p + theme_economist(base_family="Verdana") +
+  scale_color_economist(labels = c("Russell 1000",
+                                "Russell 2000"),
+                        name = "")
+
+```
+
+
+```{r}
+
+  
+
+
+```
+
+
+
+
+

@@ -1,0 +1,28 @@
+---
+title: "tibbletime walkthrough"
+author: "Yifei Liu"
+date: "4/7/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tibbletime)
+library(tidyverse)
+library(ggplot2)
+theme_set(theme_minimal())
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+```
+
+
+
+
+```{r}
+
+```
+
