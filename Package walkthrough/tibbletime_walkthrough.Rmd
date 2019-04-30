@@ -11,13 +11,527 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 ```{r}
-library(tibbletime)
+library(forecast)
+library(seasonal)
+library(urca)
+library(readxl)
+library(rdatamarket)
+library(fma)
+library(astsa)
+library(tsibble)
+library(fpp2)
+library(tsibbledata) # devtools::install_github("tidyverts/tsibbledata")
+library(broom)
+library(tidyquant)
 library(tidyverse)
-library(ggplot2)
+library(sweep)
+library(lubridate)
+library(tseries)
+library(scales)
+library(GGally)
+library(fpp2)
+library(e1071)
+library(fpp2)
+library(timetk)
+library(gridExtra)
+library(ggthemes)
 theme_set(theme_minimal())
 detach("package:dplyr", unload=TRUE)
 library(dplyr)
 ```
+
+
+## Practice: from ARIMA Modeling with R from DataCamp.
+
+### AR and MA models
+
+```{r}
+# MA(1)
+x <- arima.sim(list(order = c(0,0,1), ma = 0.9), n = 100)
+autoplot(x)
+
+Acf(x)
+Pacf(x)
+
+# AR(2)
+x <- arima.sim(list(order = c(2,0,0), ar = c(0, -0.9)), n = 100)
+autoplot(x)
+
+Acf(x)
+Pacf(x)
+
+
+```
+
+Simulate AR(2) with mean 50
+
+$X_t = 50 + 1.5(X_{t-1}- 50) - 0.75(X_{t-2}-50) + W_t$
+
+```{r}
+x <- arima.sim(list(order = c(2,0,0), ar = c(1.5, -0.75)), n = 200) + 50
+
+x_fit <- sarima(x, p =2, d = 0, q = 0)
+
+x_fit$ttable %>%
+  as.data.frame() %>%
+  rownames_to_column("Parameter")
+
+```
+
+Simulate MA(1) with mean 0
+
+$X_t = -0.7 X_{t-1} + W_t$
+
+```{r}
+x <- arima.sim(list(order = c(0,0,1), ma = -0.7), n = 200)
+x_fit <- sarima(x, p = 0, d = 0, q = 1)
+x_fit$ttable %>%
+  as.data.frame() %>%
+  rownames_to_column("Parameter")
+
+
+```
+
+### AR and MA together
+
+```{r}
+x <- arima.sim(list(order = c(1,0, 1), ar = 0.9, ma = -0.4), n = 200)
+
+autoplot(x) +
+  labs(title = "ARMA(1,1)") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
+### Model Choie and Residual Analysis
+
+```{r}
+
+x_fit <- sarima(x, p = 1, d = 0, q = 1)
+
+```
+By use sarima function, we fitted the data into ARIMA model, we can see in these five chart, ACF of residuals are all below critical line, QQ plot is close to the line, p value of Lj test are all above critical value. So we can say we pass the residual test. 
+
+
+### ARIMA - Integrated ARMA
+
+```{r}
+x <- arima.sim(list(order = c(1,1,0), ar = 0.9), n = 200)
+
+acf2(x)
+
+acf2(diff(x))
+
+
+```
+
+
+
+
+
+### Practice, vehicle sales data
+
+```{r}
+vehicle <- tq_get("FRED/TOTALNSA",
+                   get = "quandl")
+
+vehicle %>%
+  ggplot(aes(date, value)) +
+  geom_line() +
+  geom_smooth(method = "loess") +
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y")
+
+vehicle_ts <- vehicle %>%
+  tk_ts(start = c(1976,1), frequency = 12, silent = T) 
+
+vehicle_ts %>%
+  auto.arima()
+
+fit <- Arima(vehicle_ts, order = c(1, 0, 3), seasonal = c(0, 1, 2))
+
+
+autoplot(forecast(fit, h = 12))
+
+
+```
+
+E-commerce retail sales as a percent of total sales
+
+```{r}
+ecommerce_data <- tq_get("ECOMPCTNSA",
+                         get = "economic.data") %>%
+  mutate(pct = price / 100) %>%
+  select(-price)
+
+ecommerce_ts <- ecommerce_data %>%
+  tk_ts(select = -date, start = c(2009, -1), freq = 4)
+
+
+ggplot(ecommerce_data, aes(date, pct)) +
+  geom_line(color = palette_light()[[1]]) +
+  geom_smooth(method = "loess") +
+  labs(title = "E-Commerce Retail Sales as a Percent of Total Sales",
+       subtitle = "Start, 2009, freq = 4") +
+  scale_y_continuous(labels = percent_format()) +
+  theme_tq() +
+  expand_limits(y = c(0, 0.125))
+
+# fit arima model
+econ_fit <- auto.arima(ecommerce_ts, seasonal = T, stepwise = F)
+
+autoplot(forecast(econ_fit))
+
+sw_tidy(econ_fit)
+
+
+
+sw_augment(econ_fit)
+
+checkresiduals(econ_fit)
+
+
+
+model_list <- list(
+  auto.arima = list(
+    y = ecommerce_ts
+  ),
+  ets = list(
+    y = ecommerce_ts,
+    damped = TRUE
+  )
+)
+
+models_tbl <- enframe(model_list, name = "f", value = "params")
+
+models_tbl_fit <- models_tbl %>%
+  mutate(fit = invoke_map(f, params))
+
+models_tbl_fit
+
+ models_tbl_fit %>%
+  mutate(tidy = map(fit, sw_tidy)) %>%
+  unnest(tidy) %>%
+  spread(key = f, value = estimate)
+
+models_tbl_fcast_tidy <- models_tbl_fcast
+
+```
+
+### Case study: Coercion issues with ts()
+
+```{r}
+ecommerce_data %>%
+  ts(start = 2009, freq = 4)
+
+x <- ts(ecommerce_data$pct, start = 2009, freq = 4)
+str(x)
+index(x)
+
+```
+### Solution
+
+```{r}
+ecommerce_data_tkts <- ecommerce_data %>%
+  tk_ts(start = 2009, freq = 4) 
+
+ecommerce_data_tkts %>%
+  str()
+
+```
+
+### Advantages of coercion with tk_tbl()
+
+```{r}
+tkts_index <- ecommerce_data_tkts %>%
+  tk_index(timetk_idx = T)
+
+tkts_index
+class(tkts_index)
+
+ecommerce_data_tkts %>%
+  tk_tbl(rename_index = "date", timetk_idx = F)
+
+ecommerce_tbl_tk <- ecommerce_data %>%
+  tk_ts(start = 2009, freq = 4) %>%
+  tk_tbl(rename_index = "date", timetk_idx = T)
+
+```
+
+### Coercion methods
+
+```{r}
+# from tbl 
+
+# to xts
+ecommerce_data %>%
+  tk_xts(select = -date, date_var = date)
+
+# to zoo
+ecommerce_data %>%
+  tk_zoo(select = -date, date_var = date)
+
+# to zooreg
+ecommerce_data %>%
+  tk_zooreg(start = 2009, freq = 4, select = -date, date_var = date)
+
+# to ts
+ecommerce_data %>%
+  tk_ts(start = 2009, freq = 4, silent = T)
+
+# The original time_based index is retained and can be accessed using tk_index
+
+tk_index(ecommerce_data_tkts, timetk_idx = T) %>%
+  str()
+
+# from xts, zoo, zooreg, ts to tbl
+
+ecommerce_data_tkts %>%
+  tk_tbl(rename_index = "date",timetk_idx = T)
+
+has_timetk_idx(x)
+has_timetk_idx(ecommerce_data_tkts)
+
+```
+
+### Coercing ts to xts and zoo
+
+```{r}
+data_tbl <- tibble::tibble(
+  date = seq.Date(as.Date("2016-01-01"), by = 1, length.out = 5),
+  x = cumsum(11:15) * rnorm(1))
+
+
+data_ts <- data_tbl %>%
+  tk_ts(start = 2016, freq = 365, silent = T)
+
+has_timetk_idx(data_ts)
+
+# if the timetk_idex is present, the users can simply pass the ts object to the coercion function
+
+data_xts <- tk_xts(data_ts, silent = T)
+
+str(data_xts)
+has_timetk_idx(data_xts)
+
+data_xts %>%
+  tk_tbl(rename_index = "date")
+```
+
+### working with yearmon and yearqtr index
+
+```{r}
+ecommerce_data %>%
+  mutate(date = as.yearqtr(date))
+
+
+```
+### Getting the index of other time_based objects
+
+```{r}
+fit_arima <- ecommerce_data %>%
+  tk_ts(start = 2009, freq = 4, silent = T) %>%
+  auto.arima()
+
+fit_arima %>%
+  tk_index(timetk_idx = T)
+
+```
+
+### working with tiemn series index using timetk
+
+```{r}
+FB_tbl <- FANG %>%
+  filter(symbol == "FB")
+
+FB_vol <- FB_tbl %>%
+  select(date, volume)
+
+FB_vol_yearqtr <- FB_vol %>%
+  mutate(date = as.yearqtr(date)) %>%
+  group_by(date) %>%
+  summarize(volume = sum(volume))
+
+FB_vol_yearqtr
+ 
+```
+### Extract an index
+
+```{r}
+idx_date <- FB_vol %>%
+  tk_index()
+
+
+str(idx_date)
+
+idx_yearqtr <- FB_vol_yearqtr %>%
+  tk_index()
+
+
+str(idx_yearqtr)
+
+
+```
+### Analyzing the index
+
+```{r}
+idx_date %>%
+  tk_get_timeseries_signature()
+
+idx_yearqtr %>%
+  tk_get_timeseries_signature()
+
+FB_vol_date_signature <- tk_augment_timeseries_signature(FB_vol)
+
+```
+
+```{r}
+FB_vol_date_signature %>%
+  group_by(year, month.lbl) %>%
+  summarize(volume = sum(volume)) %>%
+  ggplot(aes(month.lbl, volume, fill = factor(year))) +
+  geom_bar(stat = "identity") +
+  labs(title = "Monthly plot of FB volume",
+       x = "",
+       fill = "Year",
+       subtitle = "Analyzing time0based metrics is easy with time series signature") +
+  theme_tq() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_tq() +
+  scale_y_continuous(labels = comma)
+
+
+```
+
+Modeling is also much easier. 
+
+```{r}
+fit <- lm(volume ~ year + month.lbl, data = FB_vol_date_signature)
+```
+
+### Forecasting using a Time Series Signature with timetk
+
+
+```{r}
+
+bikes <- read_csv("~/Documents/R/data/book_exercise/Bike-Sharing-Dataset/day.csv")
+
+bikes <- bikes %>%
+  select(dteday, cnt) %>%
+  rename(date = dteday)
+
+
+```
+
+```{r}
+bikes %>%
+  ggplot(aes(date, cnt)) +
+  geom_point(alpha = 0.5, color = palette_light()[[1]]) +
+  geom_rect(xmin = as.numeric(ymd("2012-07-01")),
+            xmax = as.numeric(ymd("2013-07-01")),
+            ymin = 0, ymax = 10000,
+            fill = palette_light()[[4]], alpha = 0.01) +
+  annotate("text", x = ymd("2011-10-01"),
+           y = 7800, color = palette_light()[[1]], label = "Train regrion") +
+  annotate("text", x = ymd("2012-10-01"),
+           y = 1550, color = palette_light()[[1]], label = "Test regrion") +
+  labs(title = "Bike sharing dataset: Daily Scale",
+       x = "") +
+  theme_tq()
+  
+```
+
+create training dataset and testing dataset
+
+```{r}
+train <- bikes %>%
+  filter(date < "2012-07-01")
+
+test <- bikes %>%
+  filter(!(date < "2012-07-01"))
+
+```
+
+adding time series signature to the training set. 
+
+```{r}
+train_augment <- train %>%
+  tk_augment_timeseries_signature()
+
+train_augment
+
+```
+
+Now we have all these variable, in practice, we will need to pre-processing these dataset and do feature engineering like make dummary variable, other like removing correlated variable. Here we just skip this process. 
+
+
+### Forecasting use multiple model
+
+get gasoline prices
+
+```{r}
+gas_price <- tq_get("GASREGCOVM",
+                    get = "economic.data",
+                    from = "1990-01-01")
+
+gas_price <- gas_price %>%
+  fill(price, .direction = "down")
+
+```
+
+
+plot gasoline price
+```{r}
+gas_price %>%
+  filter(date >= "2010-01-01") %>%
+  tq_performance(Ra = price,
+                 performance_fun = var)
+  ggplot(aes(date, price)) +
+  geom_point(color = palette_light()[[1]]) +
+  geom_line(color = palette_light()[[1]]) +
+  labs(title = "Gasoline Price, Monthly", 
+       x = "",
+       y = "USD") +
+  scale_y_continuous(labels = dollar_format()) +
+  scale_x_date(breaks = "5 year", date_labels = "%Y") +
+  theme_tq() 
+
+gas_price %>%
+  filter(date >= "2010-01-01") %>%
+  tq_transmute(price,
+    mutate_fun = to.period,
+               period = "quarters") %>%
+  tq_performance(Ra = price,
+                 performance_fun = var)
+
+  ggplot(aes(date, price)) +
+  geom_point(color = palette_light()[[1]]) +
+  geom_line(color = palette_light()[[1]]) +
+  labs(title = "Gasoline Price, Monthly", 
+       x = "",
+       y = "USD") +
+  scale_y_continuous(labels = dollar_format()) +
+  scale_x_date(breaks = "5 year", date_labels = "%Y") +
+  theme_tq() 
+```
+
+
+Performing forecast using multiple models
+
+```{r}
+gas_price_ts <- gas_price %>%
+  tk_ts(start = c(1990, 9), freq = 12, silent = T)
+
+
+
+```
+
+
+```{r}
+
+
+```
+
 
 
 
