@@ -1,0 +1,256 @@
+---
+title: "breats cancer analysis"
+author: "Yifei Liu"
+date: "4/20/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=F, warning=F}
+library(MASS)
+library(ISLR)
+library(tidyverse)
+library(GGally)
+detach("package:dplyr", unload=TRUE)
+library(broom)
+library(scales)
+library(forecast)
+library(ggcorrplot)
+library(class)
+library(caret)
+library(ggfortify)
+library(tidyposterior)
+library(skimr)
+library(tidymodels)
+library(parsnip)
+library(modelr)
+library(car)
+library(rsample)
+library(yardstick)
+library(dplyr)
+theme_set(theme_minimal())
+```
+
+load and clean the dataset. 
+
+## EDA
+
+try to visualze the dataset we have, our objective,
+
+1. see the corr between x variables
+2. see y variable compaision
+3. how many missing value do we have
+4. what type of prediction do we need to apply. e.g. lm, glm, or KNN. 
+
+
+
+```{r}
+breats_cancer <- read_csv("https://raw.githubusercontent.com/ECE-GitHub/breast-cancer-detection/master/data/breast-cancer-wisconsin.txt", na = c(NA, "?", "No idea", "#"))
+
+breats_cancer <- breats_cancer %>%
+  setNames(str_replace_all(names(breats_cancer), " ", "_")) %>%
+  filter(Class %in% c(2,4)) %>%
+  mutate(Class = as.factor(Class)) %>%
+  dplyr::select(-Index, - ID)
+  
+```
+
+
+the objective of this analysis is to help doctor to diagnose breats cancer, to be specific, to classific whether the result is benign or malignant, classification problem, now we can use several method in statistical learning, in supervisousn learning, such as logistical regress, lm un-supervise learning such as KNN and etc.
+
+But first we need to visualize our data first. 
+
+let's take a look at the y variable
+
+```{r}
+breats_cancer %>%
+  count(Class) %>%
+  mutate(Class = case_when(
+    Class == 2 ~ "benign",
+    T ~ "malignant"
+  )) %>%
+  ggplot(aes(Class, n, fill = Class)) +
+  geom_col() +
+  labs(title = "Number of people diagnose with breast cancer",
+       x = "", y = "", legend = "Class")
+  
+
+
+```
+
+we can see in this the number of malignant is significant higher than benign (is there a label mistake? I thought most case should be more benign than mailgnant.). In this case, we can use confusion matrices to present our result. 
+
+Next let's take a look at x variables. see quantile, how many NA do we have for all the dataset. 
+
+```{r}
+breats_cancer %>%
+  skim(Clump_Thickness:Mitoses, Class) %>%
+  pander()
+
+breats_cancer[!complete.cases(breats_cancer),]
+
+breats_cancer <- breats_cancer %>%
+  na.omit()
+
+```
+We can do futuer study, like ask question about why all the observations that have incomplete are missing Bare_Nuclei value. 
+
+Since you have abundant of data, and only hand full of missing data, we can just filter those data out. 
+
+
+let see the relationship between x variable and y variable
+
+```{r}
+
+breats_cancer %>%
+  mutate(Class = case_when(
+    Class == 2 ~ "benign",
+    T ~ "malignant"
+  )) %>%
+  ggplot(aes(Class, Clump_Thickness)) +
+  geom_boxplot(aes(fill = Class), alpha = 0.25) + 
+  geom_jitter(alpha = 0.5, height = 0.2, width = 0.25, aes(color = Class)) +
+  scale_color_manual(values = c("blue", "red")) +
+  scale_fill_manual(values = c("blue", "red")) +
+  labs(title = "Clump Thickness difference between Benign and mailgnant",
+       x = "", y = "", subtitle = "Score between 1:10")
+
+```
+
+Since we have 9 x variable and one one y variable, we can use density plot show the relationship between x and y variables. 
+
+```{r}
+breats_cancer %>%
+  mutate(Class = case_when(
+    Class == 2 ~ "benign",
+    T ~ "malignant"
+  )) %>%
+  gather(-Class, value = "value", key = "key") %>%
+  ggplot(aes(value, fill = Class)) +
+  geom_density(position = "fill", alpha = 0.25) +
+  facet_wrap(~ key) +
+  scale_fill_manual(values = c("blue", "red"))
+
+```
+
+we can see in this density chart, beside single Epithelial Cell size and Mitosens, all other chart yield similary result, most of these start to show class as malignanat as those value increase. We can use correlation plot to identify how many of these variables have a relative higher correlationship. 
+
+let's visualzie the correlationship between all those x variables.
+
+```{r}
+
+corr <- breats_cancer %>%
+  select(-Class) %>%
+  setNames(str_replace_all(names(breats_cancer)[-10], "_", " ")) %>%
+  na.omit() %>%
+  cor() %>%
+  round(digits = 2)
+
+
+corr %>%
+  ggcorrplot(hc.order = T, type = "lower",
+             outline.color = "white",
+             colors = c("#6D9EC1", "white", "#E46726"),
+             lab = T) 
+
+
+```
+
+
+
+let's visualize the x variable distribution relative to y value, since all the x variable scale from 1:10
+
+```{r}
+breats_cancer %>%
+  mutate(Class = case_when(
+    Class == 2 ~ "benign",
+    T ~ "malignant"
+  )) %>% 
+  gather(-Class, key = "key", value = "value") %>%
+  mutate(key = str_replace_all(key, "_", " ")) %>%
+  ggplot(aes(fct_reorder(key, value, .fun = median), value, fill = key)) +
+  geom_boxplot(alpha = 0.25, show.legend = F) +
+  facet_wrap(~ Class) +
+  coord_flip() +
+  labs(x = "", y = "",
+       title = "Value of feature that seperate benign cells and malignant cells",
+       subtitle = "The ratio of Malignant:Benign = 33:1")
+
+```
+
+Conclusion
+
+1. we have 9 x variables, couple of those varibale have relative high correlationship such as, uniformity of cell size, unifority of cell shape and normal nucleoli and single epithelial cell size and clump thickness and marginal adhesion.
+
+2. there are some missing value, but only around 16. So we can just filter the data out, you can ask adviors how to deal with it. In my case, I just filter out the observations that contain missing values. 
+
+
+
+## Modeling
+
+create training dataset and testing dataset, split into 80/20
+
+```{r}
+set.seed(2019)
+
+split <- initial_split(breats_cancer)
+
+cancer_train <- training(split)
+cancer_test <- testing(split)
+
+```
+
+
+model 1.
+
+use logistical regression as a benchmark. Let use mc_cv function from rsample package, this function implements monte carlo cross validation. 
+
+```{r}
+train_cv <- mc_cv(cancer_train, prop = 0.8, times = 20)
+
+```
+
+let's take a look at the data
+
+```{r}
+train_cv
+
+train_cv$splits[[1]]
+```
+
+the first number is the number of rows in the first set, the second value of second, the third was the amount of values in the training data, before spliting the training data. 
+
+
+```{r}
+
+
+glm_model <- train_cv %>%
+  mutate(model = map(split, ~glm(Class ~., data = .x)))
+
+```
+
+
+```{r}
+glm_fit <- train(Class ~., data = cancer_train, method = "glm", family = "binomial")
+
+glm_pred <- predict(glm_fit, cancer_test)
+
+confusionMatrix(glm_pred, cancer_test$Class)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
