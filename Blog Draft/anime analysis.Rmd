@@ -39,39 +39,6 @@ anime_processed <- anime_list %>%
 
 
 
-```{r}
-anime_processed %>%
-  count(studio, sort = T)
-
-anime_processed %>%
-  count(year = year(start)) %>%
-
-anime_processed %>%
-  ggplot(aes(score)) +
-  geom_density()
-
-anime_processed %>%
-  count(source, sort = T)
-
-anime_processed %>%
-  count(producer, sort = T)
-
-anime_processed %>%
-  count(type, sort = T)
-
-anime_processed %>%
-  count(episodes, sort = T)
-
-anime_processed %>%
-  count(duration, sort = T)
-
-anime_processed %>%
-  count(rating, sort = T)
-
-```
-
-
-
 
 ### Visualize the rationship between each variables
 
@@ -87,8 +54,8 @@ genre_data %>%
   count(genre, sort = T) %>%
   mutate(genre = fct_reorder(genre, n)) %>%
   head(20) %>%
-  ggplot(aes(genre, n)) +
-  geom_col() +
+  ggplot(aes(genre, n, fill = genre)) +
+  geom_col(show.legend = F) +
   labs(x = "",
        y = "") +
   coord_flip()
@@ -98,7 +65,7 @@ anime_processed %>%
   count(year = year(start)) %>%
   filter(year > 1980) %>%
   ggplot(aes(year, n)) +
-  geom_col() +
+  geom_col(fill = "lightblue") +
   labs(x = "", y = "",
        title = "Anime Produce Since 1980")
 
@@ -193,6 +160,7 @@ top_word_title %>%
 ```
 
 ### Predicting score based on title + genre + scored_by
+
 ```{r}
 # turning into a sparse matrix
 anime_word_matrix <- anime_word_filtered %>%

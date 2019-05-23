@@ -10,10 +10,18 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
+library(tidyverse)
 library(broom)
-
-detach("package:dplyr", unload=TRUE)
+library(rsample)
+library(broom)
+library(Metrics)
+library(gapminder)
+library(ranger)
 library(dplyr)
+library(pROC)
+
+theme_set(theme_minimal())
+
 ```
 
 ## Introduction to broom
@@ -62,7 +70,308 @@ wt
 
 ```
 
+## Datacamp: Machine learning in the Tidyverse
+
+
+```{r}
+country_nest <- gapminder::gapminder %>%
+  group_by(country) %>%
+  nest()
+
+country_nest %>%
+  mutate(pop_mean = map_dbl(data, ~mean(.x$pop)))
+
+tidy_model <- country_nest %>%
+  mutate(model = map(data, ~lm(formula = pop ~ lifeExp + gdpPercap, data = .x)))
+
+africa_model <- gapminder::gapminder %>%
+  group_by(continent) %>% 
+  nest() %>%
+  mutate(model = map(data, ~lm(formula = lifeExp ~ year, data = .x))) %>%
+  filter(continent == "Africa")
+
+af_mod <- africa_model$model[[1]]
+
+augment(af_mod) %>%
+  ggplot(aes(x = year)) +
+  geom_point(aes(y = lifeExp)) +
+  geom_line(aes(y = .fitted))
+
+tidy_model %>%
+  mutate(coef = map(model, ~ glance(.x))) %>%
+  unnest(coef) %>%
+  arrange(desc(adj.r.squared))
 
 
 
+
+```
+
+cross validate
+
+```{r}
+gap_split <- initial_split(gapminder::gapminder, prop = 0.75)
+
+training_data <- training(gap_split)
+testing_data <- testing(gap_split)
+
+cv_split <- vfold_cv(training_data, v = 10)
+
+cv_data <- cv_split %>%
+  mutate(train = map(splits, ~training(.x)),
+         validate = map(splits, ~testing(.x)))
+
+cv_models_lm <- cv_data %>%
+  mutate(model = map(train, ~lm(formula = lifeExp ~., data = .x)))
+
+cv_prep_lm <- cv_models_lm %>%
+  mutate(validate_actual = map(validate, ~.x$lifeExp),
+         validate_predicted = map2(.x=model, .y = validate, ~predict(.x, .y)))
+
+cv_eval_lm <- cv_prep_lm %>%
+  mutate(validate_mae = map2_dbl(validate_actual, validate_predicted, ~mae(actual = .x, predicted = .y)))
+
+
+mean(cv_eval_lm$validate_mae)
+
+```
+
+Random Forst model
+
+without tuning parameters
+
+```{r}
+cv_models_rf <- cv_data %>%
+  mutate(model = map(train, ~ranger(formula = lifeExp~., data = .x, num.trees = 100, seed = 2019)))
+
+cv_prep_rf <- cv_models_rf %>%
+  mutate(validate_predicted = map2(.x = model, .y = validate, ~predict(.x, .y)$predictions))
+
+cv_eval_rf <- cv_prep_rf %>%
+  mutate(validate_actual = map(validate, ~.x$lifeExp),
+          validate_mae = map2_dbl(validate_actual, validate_predicted, ~mae(actual = .x, predicted = .y)))
+
+cv_eval_rf$validate_mae
+
+```
+
+
+with tuning the parameters
+
+```{r}
+cv_tune <- cv_data %>%
+  crossing(mtry = 1:5)
+
+# train model
+cv_model_tunerf <- cv_tune %>%
+  mutate(model = map2(.x = train, .y = mtry, ~ranger(formula = lifeExp ~., data = .x,
+                                                     mtry = .y, num.trees = 100, seed = 2019)))
+
+# generate validate prediction for each model
+
+cv_prep_tunerf <- cv_model_tunerf %>%
+  mutate(validate_actual = map(validate, ~.x$lifeExp),
+         validate_predicted = map2(.x = model, .y = validate, ~predict(.x, .y)$predictions))
+
+# Calculate validate MAE for each fold and mtry combination
+
+cv_eval_tunerf <- cv_prep_tunerf %>%
+  mutate(validate_mae = map2_dbl(.x = validate_actual, .y = validate_predicted, 
+                                 ~mae(actual = .x, predicted = .y)))
+
+# calcuate the mean validate_mae for each mtry used
+
+cv_eval_tunerf %>%
+  group_by(mtry) %>%
+  summarize(mean_mae = mean(validate_mae))
+
+# boxplot the validate_mae
+
+cv_eval_tunerf %>%
+  ggplot(aes(mtry, validate_mae, group = mtry)) +
+  geom_point() +
+  geom_boxplot() +
+  geom_jitter()
+
+
+```
+
+build & evaluate the best model
+
+so in this case the lm model is the accurate since it has the lower MAE value, so we use lm model as a final model to predict testing dataset.
+
+```{r}
+best_model <- lm(formula = lifeExp ~., data = training_data)
+
+test_actual <- testing_data$lifeExp
+test_predict <- predict(best_model, testing_data)
+
+mae(test_actual, test_predict)
+
+
+```
+
+Logistic regression models
+
+use _attrition_ dataset.
+
+In this attrition dataset, we need to use all the predictors to predict whether a employee have higher risk of leaving the firm. 
+
+let do some basic EDA
+
+```{r}
+attrition %>%
+  count(Attrition) %>%
+  ggplot(aes(Attrition, n, fill = Attrition)) +
+  geom_col(show.legend = F)
+```
+
+
+
+```{r}
+set.seed(42)
+
+# Prepare the initial split object
+data_split <- initial_split(attrition, prop = 0.75)
+
+# Extract the training dataframe
+training_data <- training(data_split)
+
+# Extract the testing dataframe
+testing_data <- testing(data_split)
+```
+
+cross validation
+
+```{r}
+set.seed(2019)
+
+cv_split <- training_data %>%
+  vfold_cv(v = 5)
+
+cv_data <- cv_split %>%
+  mutate(train = map(splits, ~training(.x)),
+         validate = map(splits, ~testing(.x)))
+
+```
+
+build cv models
+
+```{r}
+cv_models_lr <- cv_data %>% 
+  mutate(model = map(train, ~glm(formula = Attrition ~., 
+                               data = .x, family = "binomial")))
+
+```
+
+what we need to measure the performance
+
+1. actuall attritions classes (from testing dataset)
+2. predicted attritions classes (from predict function with model and test dataset)
+3. A metric to compare 
+
+predict a single model
+
+```{r}
+# extract first model and validate
+model <- cv_models_lr$model[[1]]
+validate <- cv_models_lr$validate[[1]]
+
+# prepare binary vector of actual attrition values in validate
+
+validate_actual <- validate$Attrition == "Yes"
+validate_prob <- predict(model, validate, type = "response")
+
+# prepare binary vector of predictied attrition value for validate
+
+validate_predicted <- validate_prob > 0.5
+
+# comapre the actual & predicted performance visually using a table
+
+table(validate_actual, validate_predicted)
+
+# calcuate the accuracy, precision and recall
+accuracy(validate_actual, validate_predicted)
+precision(validate_actual, validate_predicted)
+recall(validate_actual, validate_predicted)
+```
+
+
+prepare for cross validated performance
+
+```{r}
+cv_prep_lr <- cv_models_lr %>%
+  mutate(
+    validate_actual = map(validate, ~.x$Attrition == "Yes"),
+    validate_predicted = map2(.x = model, .y = validate, ~predict(.x, .y, type = "response") > 0.5)
+  )
+
+# calcuate corss-validate performance
+
+cv_perf_recall <- cv_prep_lr %>%
+  mutate(validate_recall = map2_dbl(validate_actual, validate_predicted, 
+                                    ~recall(actual = .x, predicted = .y)))
+# print the validate_recall 
+cv_perf_recall$validate_recall
+
+# Calculate the average of the validate_recall column
+mean(cv_perf_recall$validate_recall)
+
+```
+
+Random forecast for classification
+
+```{r}
+cv_tune <- cv_data %>%
+  crossing(mtry = c(2, 4, 8, 16))
+
+cv_models_rf <- cv_tune %>%
+  mutate(model = map2(train, mtry, ~ranger(formula = Attrition ~.,
+                                           data = .x, mtry = .y,
+                                           num.trees = 100,
+                                           seed = 2019)))
+
+cv_prep_rf <- cv_models_rf %>% 
+  mutate(
+    # Prepare binary vector of actual Attrition values in validate
+    validate_actual = map(validate, ~.x$Attrition == "Yes"),
+    # Prepare binary vector of predicted Attrition values for validate
+    validate_predicted = map2(.x = model, .y = validate, ~predict(.x, .y, type = "response")$predictions == "Yes")
+  )
+
+# Calculate the validate recall for each cross validation fold
+cv_perf_recall <- cv_prep_rf %>% 
+  mutate(recall = map2_dbl(.x = validate_actual, .y = validate_predicted, 
+                           ~recall(actual = .x, predicted = .y)))
+
+# Calculate the mean recall for each mtry used  
+cv_perf_recall %>% 
+  group_by(mtry) %>% 
+  summarise(mean_recall = mean(recall))
+
+cv_perf_recall %>% 
+  group_by(mtry) %>% 
+  ggplot(aes(mtry, recall, group = mtry)) +
+  geom_boxplot() +
+  geom_point() +
+  geom_jitter()
+
+
+```
+
+we can see the random forst model not as good as glm function, so we should use glm funcion as best model to predict 
+
+Predict the testing set
+
+```{r}
+test_actual <- testing_data$Attrition == "Yes"
+
+best_model <- glm(Attrition ~., data = training_data,
+                  family = "binomial")
+
+test_predict <- predict(best_model, testing_data, type = "response") > 0.5
+
+table(test_actual, test_predict)
+
+```
 

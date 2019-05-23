@@ -1,0 +1,45 @@
+---
+title: "probability simualtion"
+author: "Yifei Liu"
+date: "5/22/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo = F, warning=F, message=F}
+library(tidyverse)
+theme_set(theme_minimal())
+
+```
+
+```{r}
+coin_sim <- function(x) {
+  simulation <- rle(rbinom(x, 1, 0.5))
+  which(simulation$lengths == 3 & simulation$values == 1)[1]
+}
+
+sim_res <- crossing(test = 1:1e5L) %>%
+  mutate(res = map_dbl(rep(1000, 1e5L), ~coin_sim(.x))) %>%
+  na.omit() %>%
+  mutate(estimate = cumsum(res) / test)
+
+sim_res %>%
+  ggplot(aes(test, estimate)) +
+  geom_line(color = "midnightblue") +
+  geom_hline(yintercept = 15.6) +
+  labs(x = "", title = "Average length of play which having up side come up 3 times in a row")
+
+
+```
+
+
+Reference: [Answer probability questions with simulation](https://www.r-exercises.com/2017/08/20/answer-probability-questions-with-simulation/)
+
+
+
+
+
+

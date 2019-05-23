@@ -1,0 +1,62 @@
+---
+title: "analyze_anime"
+author: "Yifei Liu"
+date: "5/10/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+library(tidyverse)
+library(vroom)
+library(skimr)
+library(lubridate)
+theme_set(theme_set(theme_minimal(base_size=12, base_family="HiraKakuProN-W3")))
+
+```
+
+load dataset
+
+```{r}
+tidy_anime <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-04-23/tidy_anime.csv")
+
+
+
+```
+
+
+```{r}
+skim(tidy_anime)
+```
+
+```{r}
+anime_rating <- tidy_anime %>%
+  select(animeID, name, type, source, producers, genre, studio, episodes, status, airing, start_date, end_date, duration, rating, score, scored_by, rank, popularity, members, favorites)
+
+skim(anime_rating)
+
+```
+
+### EDA
+
+```{r}
+anime_rating %>%
+  mutate(year = year(start_date)) %>%
+  group_by(year) %>%
+  count() 
+
+
+```
+
+
+
+
+
+
+
+

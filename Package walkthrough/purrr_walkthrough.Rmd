@@ -1,0 +1,561 @@
+---
+title: "Purrr walkthrough"
+author: "Yifei Liu"
+date: "4/30/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=F, warning=F}
+library(tidyverse)
+library(purrr)
+library(magrittr)
+library(rlang)
+library(gapminder)
+library(repurrrsive)
+library(listviewer)
+library(listviewer)
+theme_set(theme_minimal())
+
+detach("package:dplyr", unload = TRUE)
+library(dplyr)
+
+```
+
+## Vectors and lists
+
+### Atomic vectors
+
+```{r}
+(v_log <- c(TRUE, TRUE, FALSE, FALSE))
+is.logical(v_log)
+is_logical(v_log)
+
+```
+
+### Coercion
+
+### List
+
+### List indexing
+
+```{r}
+(x <- list(1:3, c("four", "five")))
+
+x[c(F, T)]
+
+
+```
+
+### Vectorized operations
+
+```{r}
+n <- 5
+seq_len(n) ^ 2
+
+```
+
+
+## Relationship to base and plyr functions
+
+### Why not base?
+
+### Why purrr?
+
+#### lapply() vs. purrr::map()
+
+```{r}
+map(got_chars[1:3], "name")
+
+```
+
+#### \_(ツ)_/¯ vs. map_dfr()
+
+map_dfr function is list in data frame out
+
+```{r}
+map_dfr(got_chars[23:25], `[`, c("name", "playedBy"))
+
+tibble::tibble(name = map_chr(got_chars, "name"),
+               id = map_int(got_chars, "id"))
+
+
+```
+
+
+#### mapply() vs. map2(), pmap()
+
+when you need to iterate over 2 or more vectors/lists in parrallel, the base options is mapply
+
+pmap_*() applied .f to each row
+
+```{r}
+nms <- got_chars[16:18] %>%
+  map_chr("name")
+birth <- got_chars[16:18] %>%
+  map_chr("born")
+
+map2_chr(nms, birth, ~paste(.x, "was born", .y))
+
+df <- tibble::tibble(
+  nms,
+  connector = "was born",
+  birth
+)
+
+pmap_chr(df, paste)
+
+```
+
+
+#### aggregate() vs. dplyr::summarize()
+
+```{r}
+(mini_gap <- gapminder %>%
+   filter(country %in% c("Canada", "Germany"),
+          year > 2000))
+
+mini_gap %>%
+  group_by(country) %>%
+  summarize(lifeExp = mean(lifeExp))
+
+gapminder %>%
+  group_by(country) %>%
+  summarize(cor = cor(lifeExp, year))
+
+```
+
+
+#### by() vs. tidyr::nest()
+
+```{r}
+nested_df <- gapminder %>%
+  group_by(country, continent) %>%
+  nest() %>%
+  mutate(fit = map(data, ~lm(lifeExp ~ year, data = .x)))
+
+glimpse(nested_df,max.level = 1)
+
+nested_df$fit[[1]]
+
+nested_df %>%
+  filter(continent == "Oceania") %>%
+  .$fit
+
+nested_df %>%
+  mutate(coefs = map(fit, coef),
+         intercept = map_dbl(coefs, 1),
+         slope = map_dbl(coefs, 2)) %>%
+  select(- coefs)
+
+```
+
+## Explore the example lists: Wes Anderson, Game of Thrones, GitHub
+
+### Inspect and explore
+
+### Wes Anderson color palettes
+
+```{r}
+str(wesanderson)
+
+```
+
+### Game of Thrones POV characters
+
+```{r}
+str(got_chars, list.len = 3)
+dplyr::glimpse(got_chars, list.len = 3)
+
+```
+
+## Introduction to map(): extract elements
+
+### Vectorized and “list-ized” operations
+
+### Type-specific map
+
+
+```{r}
+
+x <- map(got_chars, `[`, c("name", "culture", "gender", "born"))
+
+str(x[16:18])
+
+x <- map(got_chars, extract, c("name", "culture", "gender", "born"))
+str(x[16:20], max.level = 2, list.len = 2)
+
+map_chr(got_chars[[1]], class)
+
+```
+
+### Data frame output
+
+```{r}
+map_dfr(got_chars, extract, c("name", "culture", "gender", "id", "born", "alive"))
+
+```
+
+## Simplifying data from a list of GitHub users
+
+### Get several GitHub users
+
+```{r}
+str(gh_users, max.level = 2, list.len = 3)
+
+
+```
+
+
+### Name and position shortcuts
+
+### Vector input to extraction shortcuts
+
+```{r}
+gh_repos %>%
+  map_chr(c(1, 4, 1))
+
+gh_repos[[1]][[1]]$owner[[1]]
+
+str(gh_repos, list.len = 3)
+
+```
+IMPORTANT: Note that this does NOT give elements 1 and 3 of gh_repos. It extracts the first repo for each user and, within that, the 3rd piece of information for the repo.
+
+
+### List inside a data frame
+
+
+```{r}
+(unames <- map_chr(gh_repos, c(1,4,1)))
+
+
+
+(udf <- gh_repos %>%
+    set_names(unames) %>%
+    enframe("username", "gh_repos"))
+
+
+udf %>%
+  mutate(n_repos = map_int(gh_repos, length))
+
+one_user <- udf$gh_repos[[1]]
+
+identical(one_user, gh_repos[[1]])
+
+str(one_user, max.level = 3, list.len = 5)
+
+one_repo <- one_user[[1]]
+
+identical(one_repo, gh_repos[[1]][[1]])
+
+str(one_repo)
+
+map_df(one_user, extract, c("name", "fork", "open_issues"))
+
+udf %>%
+  mutate(repo_info = gh_repos %>%
+           map(. %>% map_df(extract, c("name", "fork", "open_issues"))))
+
+rdf <- udf %>%
+  mutate(repo_info = gh_repos %>%
+           map(. %>% map_df(extract, c("name", "fork", "open_issues")))) %>%
+  select(-gh_repos) %>%
+  unnest()
+
+rdf %>%
+  filter(!fork) %>%
+  select(-fork) %>%
+  group_by(username) %>%
+  arrange(username, desc(open_issues)) %>%
+  slice(1:3)
+
+```
+
+## Specifying the function in map() + parallel mapping
+
+### map() function specification
+
+```{r}
+aliases <- set_names(map(got_chars, "aliases"), map_chr(got_chars, "name"))
+
+aliases
+
+```
+
+
+### Existing functio
+
+```{r}
+my_function <- function(x) paste(x, collapse = " | ")
+
+map(aliases, my_function)
+
+```
+
+### Anonymous function, conventional
+
+```{r}
+map(aliases, function(x) paste(x, collapse = " | "))
+
+map(aliases, paste, collapse = " | ")
+
+```
+
+
+### Anonymous function, formula
+
+```{r}
+map(aliases, ~ paste(.x, collapse = " | "))
+
+```
+
+
+### Workflow advice
+
+```{r}
+(a <- map(got_chars, "aliases")[[19]])
+(a <- map(got_chars, "aliases")[[16]])
+
+paste(a, sep = " | ")
+paste(a, collapse  = " | ")
+
+got_chars[15:17] %>%
+  map("aliases") %>%
+  map_chr(paste, collapse = " | ")
+
+
+```
+
+### List to data frame
+
+```{r}
+aliases <- set_names(map(got_chars, "aliases"), map_chr(got_chars, "name"))
+
+map_chr(aliases, ~paste(.x, collapse = " | ")) %>%
+  enframe(value = "aliases")
+
+
+
+```
+
+### Exercises
+
+1. Create a list allegiances that holds the characters’ house affiliations.
+
+```{r}
+allegiances <- set_names(map(got_chars, "allegiances"), map_chr(got_chars, "name"))
+
+```
+
+2. Create a character vector nms that holds the characters’ names.
+
+```{r}
+nms <- map_chr(got_chars, "name")
+
+```
+
+3. Apply the names in nms to the allegiances list via set_names.
+
+```{r}
+allegiances <- set_names(map(got_chars, "allegiances"), map_chr(got_chars, "name"))
+```
+
+4. Re-use the code from above to collapse each character’s vector of allegiances down to a string.
+
+```{r}
+map(allegiances, ~paste(.x, collapse = " | "))
+
+```
+
+5. We said that any elements passed via ... would be used “as is”. Specifically they are not used in a vectorized fashion. What happens if you pass collapse = c(" | ", " * ")? Why is that?
+
+```{r}
+map(allegiances, ~paste(.x, collapse = c(" | ", " * ")))
+
+identical(map(allegiances, ~paste(.x, collapse = " | ")), map(allegiances, ~paste(.x, collapse = c(" | ", " * "))))
+
+map_chr(allegiances, ~ paste(.x, collapse = " | ")) %>%
+  enframe(value = "allegiances")
+
+```
+
+the result just ingore the second collapse. 
+
+### Parallel map
+
+#### map2()
+
+```{r}
+nms <- map_chr(got_chars, "name")
+birth <- got_chars %>%
+  map_chr("born")
+
+map2_chr(nms, birth, ~paste(.x, "was born", .y))
+
+```
+
+#### pmap()
+
+```{r}
+df <- got_chars %>% {
+  tibble::tibble(
+    name = map_chr(., "name"),
+    aliases = map(., "aliases"),
+    allegiance = map(., "allegiances")
+  )
+}
+
+my_fun <- function(name, aliases, allegiances) {
+  paste(name, "has", length(aliases), "aliases and",
+        length(allegiances), "allegiances")
+}
+
+df %>%
+  pmap_chr(my_fun) %>%
+  tail()
+
+```
+
+## Trump Android words
+
+```{r}
+load(url("http://varianceexplained.org/files/trump_tweets_df.rda"))
+```
+
+### Trump Android words
+
+```{r}
+regex <- "badly|crazy|weak|spent|strong|dumb|joke|guns|funny|dead"
+
+tweets <- trump_tweets_df$text
+
+tweets %>% head() %>% strtrim(70)
+
+tweets[c(1, 2, 5, 6, 198, 347, 919)] %>%
+  strtrim(70)
+
+```
+
+### Are you ready for gregexpr()?
+
+```{r}
+matches <- gregexpr(regex, tweets)
+
+matches[[7]]
+
+trump_tweets_df %>%
+  filter(str_detect(text, regex))
+
+
+map(matches, ~attr(.x, which = "match.length")) %>%
+  head()
+
+lengths(matches)
+
+map(matches, function(x) sum(x > 0)) %>%
+  head()
+
+map_int(matches, ~sum(.x > 0)) 
+
+match_length <- map(matches, attr, which = "match.length")
+
+tibble(
+  naive_length = lengths(matches),
+  n_words = map_int(matches, ~sum(.x > 0))
+)
+
+```
+
+### Strip the attributes from matches
+
+```{r}
+match_first <- map(matches, as.vector)
+
+head(match_first)
+
+```
+
+
+### Assess progress in a small example
+
+
+```{r}
+head(match_length)
+
+trump_tweets_df %>%
+  mutate(contain = map(tweets, str_extract_all, pattern = regex),
+         words = map_chr(contain, ~paste(.x, collapse = " | "))) %>%
+  select(- contain) %>%
+  mutate(words = case_when(words == "character(0)" ~ NA_character_,
+                           T ~ words))
+
+```
+
+## Sample from groups, n varies by group
+
+```{r}
+nested_iris <- iris %>%
+  group_by(Species) %>%
+  nest() %>%
+  mutate(n = c(2,5,3))
+
+nested_iris
+
+sampled_iris <- nested_iris %>%
+  mutate(samp = map2(data, n, sample_n))
+
+sampled_iris
+
+sampled_iris %>%
+  select(Species, samp) %>%
+  unnest()
+
+iris %>%
+  group_by(Species) %>%
+  nest() %>%
+  mutate(n = c(2,5,3),
+         samp = map2(data, n, sample_n)) %>%
+  select(Species, samp) %>%
+  unnest()
+
+```
+
+
+
+
+
+Reference: [purrr tutorial](https://jennybc.github.io/purrr-tutorial/index.html)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

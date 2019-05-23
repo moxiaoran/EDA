@@ -1,0 +1,18 @@
+---
+title: "statQuest"
+author: "Joah Starmer"
+date: "5/7/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+theme_set(theme_minimal())
+library(pROC)
+
+```
+

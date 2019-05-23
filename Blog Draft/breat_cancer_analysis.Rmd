@@ -1,8 +1,10 @@
 ---
-title: "breats cancer analysis"
+title: "breast cancer analysis"
 author: "Yifei Liu"
 date: "4/20/2019"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -10,27 +12,22 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r message=F, warning=F}
-library(MASS)
-library(ISLR)
 library(tidyverse)
-library(GGally)
-detach("package:dplyr", unload=TRUE)
 library(broom)
 library(scales)
-library(forecast)
+library(MASS)
 library(ggcorrplot)
-library(class)
-library(caret)
-library(ggfortify)
-library(tidyposterior)
 library(skimr)
 library(tidymodels)
 library(parsnip)
+library(yardstick)
 library(modelr)
-library(car)
+library(Metrics)
+library(ranger)
 library(rsample)
 library(yardstick)
 library(dplyr)
+library(ranger)
 theme_set(theme_minimal())
 ```
 
@@ -48,30 +45,32 @@ try to visualze the dataset we have, our objective,
 
 
 ```{r}
-breats_cancer <- read_csv("https://raw.githubusercontent.com/ECE-GitHub/breast-cancer-detection/master/data/breast-cancer-wisconsin.txt", na = c(NA, "?", "No idea", "#"))
+breast_cancer <- read_csv("https://raw.githubusercontent.com/ECE-GitHub/breast-cancer-detection/master/data/breast-cancer-wisconsin.txt", na = c(NA, "?", "No idea", "#"))
 
-breats_cancer <- breats_cancer %>%
-  setNames(str_replace_all(names(breats_cancer), " ", "_")) %>%
+breast_cancer <- breast_cancer %>%
+  setNames(str_replace_all(names(breast_cancer), " ", "_")) %>%
   filter(Class %in% c(2,4)) %>%
   mutate(Class = as.factor(Class)) %>%
-  dplyr::select(-Index, - ID)
+  select(-Index, - ID) %>%
+  mutate(Class = case_when(
+    Class == 2 ~ "benign",
+    T ~ "malignant"
+  ),
+  Class = as.factor(Class))
+
   
 ```
 
 
-the objective of this analysis is to help doctor to diagnose breats cancer, to be specific, to classific whether the result is benign or malignant, classification problem, now we can use several method in statistical learning, in supervisousn learning, such as logistical regress, lm un-supervise learning such as KNN and etc.
+the objective of this analysis is to help doctor to diagnose breast cancer, to be specific, to classific whether the result is benign or malignant, classification problem, now we can use several method in statistical learning, in supervisousn learning, such as logistical regress, lm un-supervise learning such as KNN and etc.
 
 But first we need to visualize our data first. 
 
 let's take a look at the y variable
 
 ```{r}
-breats_cancer %>%
+breast_cancer %>%
   count(Class) %>%
-  mutate(Class = case_when(
-    Class == 2 ~ "benign",
-    T ~ "malignant"
-  )) %>%
   ggplot(aes(Class, n, fill = Class)) +
   geom_col() +
   labs(title = "Number of people diagnose with breast cancer",
@@ -86,13 +85,13 @@ we can see in this the number of malignant is significant higher than benign (is
 Next let's take a look at x variables. see quantile, how many NA do we have for all the dataset. 
 
 ```{r}
-breats_cancer %>%
+breast_cancer %>%
   skim(Clump_Thickness:Mitoses, Class) %>%
   pander()
 
-breats_cancer[!complete.cases(breats_cancer),]
+breast_cancer[!complete.cases(breast_cancer),]
 
-breats_cancer <- breats_cancer %>%
+breast_cancer <- breast_cancer %>%
   na.omit()
 
 ```
@@ -105,11 +104,7 @@ let see the relationship between x variable and y variable
 
 ```{r}
 
-breats_cancer %>%
-  mutate(Class = case_when(
-    Class == 2 ~ "benign",
-    T ~ "malignant"
-  )) %>%
+breast_cancer %>%
   ggplot(aes(Class, Clump_Thickness)) +
   geom_boxplot(aes(fill = Class), alpha = 0.25) + 
   geom_jitter(alpha = 0.5, height = 0.2, width = 0.25, aes(color = Class)) +
@@ -123,11 +118,15 @@ breats_cancer %>%
 Since we have 9 x variable and one one y variable, we can use density plot show the relationship between x and y variables. 
 
 ```{r}
-breats_cancer %>%
-  mutate(Class = case_when(
-    Class == 2 ~ "benign",
-    T ~ "malignant"
-  )) %>%
+breast_cancer %>%
+  gather(key = "key", value = "value", -Class) %>%
+  na.omit() %>%
+  ggplot(aes(value, fill = as.factor(Class))) +
+  geom_density() +
+  facet_wrap(~ key) +
+  labs(fill = "Class")
+
+breast_cancer %>%
   gather(-Class, value = "value", key = "key") %>%
   ggplot(aes(value, fill = Class)) +
   geom_density(position = "fill", alpha = 0.25) +
@@ -141,10 +140,9 @@ we can see in this density chart, beside single Epithelial Cell size and Mitosen
 let's visualzie the correlationship between all those x variables.
 
 ```{r}
-
-corr <- breats_cancer %>%
+corr <- breast_cancer %>%
   select(-Class) %>%
-  setNames(str_replace_all(names(breats_cancer)[-10], "_", " ")) %>%
+  setNames(str_replace_all(names(breast_cancer)[-10], "_", " ")) %>%
   na.omit() %>%
   cor() %>%
   round(digits = 2)
@@ -164,11 +162,7 @@ corr %>%
 let's visualize the x variable distribution relative to y value, since all the x variable scale from 1:10
 
 ```{r}
-breats_cancer %>%
-  mutate(Class = case_when(
-    Class == 2 ~ "benign",
-    T ~ "malignant"
-  )) %>% 
+breast_cancer %>%
   gather(-Class, key = "key", value = "value") %>%
   mutate(key = str_replace_all(key, "_", " ")) %>%
   ggplot(aes(fct_reorder(key, value, .fun = median), value, fill = key)) +
@@ -181,6 +175,35 @@ breats_cancer %>%
 
 ```
 
+we can use bootstrap to gague the true median or mean of each variables. 
+
+```{r}
+geom_mean <- function(x) {
+  exp(mean(log(x + 1)) - 1)
+}
+
+breast_cancer %>%
+  gather(key, value, -Class) %>%
+  bootstraps(times = 25) %>%
+  unnest(map(splits, as.data.frame)) %>%
+  group_by(id, key, Class) %>%
+  summarize(avg_mean = geom_mean(value)) %>%
+  ungroup() %>%
+  mutate(key = fct_reorder(key, avg_mean)) %>%
+  ggplot(aes(key, avg_mean, group = key)) +
+  geom_boxplot() +
+  coord_flip() +
+  facet_wrap(~ Class, scales = "free_x") +
+  labs(x = "Mean Score",
+       y = "",
+       title = "")
+
+```
+
+
+
+
+
 Conclusion
 
 1. we have 9 x variables, couple of those varibale have relative high correlationship such as, uniformity of cell size, unifority of cell shape and normal nucleoli and single epithelial cell size and clump thickness and marginal adhesion.
@@ -191,56 +214,168 @@ Conclusion
 
 ## Modeling
 
-create training dataset and testing dataset, split into 80/20
+Most important question need to answer when building the model 
+
+1. How well my model well perform on the new data
+2. Did I select the best performing model 
+
+### split dataset
+80/20 split ratio
 
 ```{r}
 set.seed(2019)
 
-split <- initial_split(breats_cancer)
+cancer_split <- initial_split(breast_cancer, prop = 0.8)
 
-cancer_train <- training(split)
-cancer_test <- testing(split)
+cancer_train <- training(cancer_split)
+cancer_test <- testing(cancer_split)
 
 ```
 
+using training data exclusively to train my model
 
-model 1.
+use cross validation, benefit,
 
-use logistical regression as a benchmark. Let use mc_cv function from rsample package, this function implements monte carlo cross validation. 
+1. this well enable user to use all the training dataset to evaluate overall performance of the model
+2. able to calcuate the multiple measure of the performance. This count the nature variation of the performance of the model.
 
 ```{r}
-train_cv <- mc_cv(cancer_train, prop = 0.8, times = 20)
+cv_split <- cancer_train %>%
+  vfold_cv(v = 20)
+  
+cv_split$splits[[1]]
 
+cv_data <- cv_split %>%
+  mutate(train = map(splits, ~training(.x)),
+         validate = map(splits, ~testing(.x)))
 ```
 
-let's take a look at the data
+
+
+### first model - logistic regression
 
 ```{r}
-train_cv
+cv_models_lr <- cv_data %>%
+  mutate(model = map(train, ~glm(Class ~., data = .x, family = "binomial")))
 
-train_cv$splits[[1]]
+cv_prep_lr <- cv_models_lr %>%
+  mutate(validate_actual = map(validate, ~.x$Class == "malignant"),
+         validate_predicted = map2(model, validate, ~predict(.x, .y ,type = "response") > 0.5))
+
+cv_eval_lr <- cv_prep_lr %>%
+  mutate(validate_recall = map2_dbl(validate_actual, validate_predicted, ~ recall(actual = .x, predicted = .y)),
+         validate_accuracy = map2_dbl(validate_actual, validate_predicted, ~ accuracy(actual = .x, predicted = .y)),
+         validate_precision = map2_dbl(validate_actual, validate_predicted, ~ precision(actual = .x, predicted = .y)))
+
+cv_eval_lr %>%
+  select(validate_recall, validate_accuracy, validate_precision) %>%
+  setNames(c("recall", "accuracy", "precision")) %>%
+  gather() %>%
+  ggplot(aes(key, value, fill = key)) +
+  geom_boxplot(show.legend = F) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  expand_limits(y = 0.995) +
+  labs(x = "", y = "",
+       title = "Logisticl regression accuracy, precision, recall values")
+
 ```
 
-the first number is the number of rows in the first set, the second value of second, the third was the amount of values in the training data, before spliting the training data. 
+we can see the distribution of all these modl are quite stable. 
+
+
+### second model: random forecast
+
+```{r}
+cv_tune <- cv_data %>%
+  crossing(mtry = c(3,5,7,9))
+
+# I only tune one parameter in this case
+cv_models_rf <- cv_tune %>%
+  mutate(model = map2(train,mtry, ~ranger(Class ~., data = .x, mtry = .y, num.trees = 100,
+                                           seed = 2019)))
+
+cv_prep_rf <- cv_models_rf %>%
+  mutate(validate_actual = map(validate, ~.x$Class == "malignant"),
+         validate_predicted = map2(model, validate, ~predict(.x, .y ,type = "response")$predictions == "malignant"))
+
+cv_eval_rf <- cv_prep_rf %>%
+  mutate(validate_recall = map2_dbl(validate_actual, validate_predicted, ~ recall(actual = .x, predicted = .y)),
+         validate_accuracy = map2_dbl(validate_actual, validate_predicted, ~ accuracy(actual = .x, predicted = .y)),
+         validate_precision = map2_dbl(validate_actual, validate_predicted, ~ precision(actual = .x, predicted = .y)))
+
+cv_eval_rf %>%
+  select(validate_recall, validate_accuracy, validate_precision, mtry) %>%
+  setNames(c("recall", "accuracy", "precision", "mtry")) %>%
+  gather(key, value, -mtry) %>%
+  ggplot(aes(key, value, fill = key)) +
+  geom_boxplot(show.legend = F) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  facet_wrap(~mtry) +
+  expand_limits(y = 0.995) +
+  labs(x = "", y = "",
+       title = "Random Forecast model",
+       subtitle = "differnt mtry")
+  
+
+```
+
+### thrid model - linear discrimate analysis
+
+```{r}
+cv_models_lda <- cv_data %>%
+  mutate(model = map(train, ~lda(Class ~., data = .x)))
+
+cv_prep_lda <- cv_models_lda %>%
+  mutate(validate_actual = map(validate, ~.x$Class == "malignant"),
+         validate_predicted = map2(model, validate, ~predict(.x, .y ,type = "response")$class == "malignant"))
+
+cv_eval_lda <- cv_prep_lda %>%
+  mutate(validate_recall = map2_dbl(validate_actual, validate_predicted, ~ recall(actual = .x, predicted = .y)),
+         validate_accuracy = map2_dbl(validate_actual, validate_predicted, ~ accuracy(actual = .x, predicted = .y)),
+         validate_precision = map2_dbl(validate_actual, validate_predicted, ~ precision(actual = .x, predicted = .y)))
+
+cv_eval_lda %>%
+  dplyr::select(validate_recall, validate_accuracy, validate_precision) %>%
+  setNames(c("recall", "accuracy", "precision")) %>%
+  gather() %>%
+  ggplot(aes(key, value, fill = key)) +
+  geom_boxplot(show.legend = F) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  expand_limits(y = 0.995) +
+  labs(x = "", y = "",
+       title = "Linear Discriminant Analysis accuracy, precision, recall values")
+
+```
+
+
+
+base on this two model we can say the accuacy, precision and recall are quite stable for models. So I use the logisticl regression model as final model to predict the test dataset. Because it's relartive easy to interpret. 
+
+
+Let's use 
 
 
 ```{r}
+test_actual <- cancer_test$Class == "malignant"
+
+best_model <- glm(Class ~., data = cancer_train, family = "binomial")
+
+test_predicted <- predict(best_model, cancer_test, type = "response") > 0.5
+
+table(test_actual, test_predicted) %>%
+  knitr::kable()
 
 
-glm_model <- train_cv %>%
-  mutate(model = map(split, ~glm(Class ~., data = .x)))
-
+precision(test_actual, test_predicted)
+accuracy(test_actual, test_predicted)
+recall(test_actual, test_predicted)
 ```
 
 
-```{r}
-glm_fit <- train(Class ~., data = cancer_train, method = "glm", family = "binomial")
+Overall accurate rate is pretty good. I will use this model in practice to help doctor to predict whether a cell is malignant base on all the predictors. 
 
-glm_pred <- predict(glm_fit, cancer_test)
 
-confusionMatrix(glm_pred, cancer_test$Class)
 
-```
 
 
 

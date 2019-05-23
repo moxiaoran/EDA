@@ -1,0 +1,42 @@
+---
+title: "Introduction to Generalized Additive Models"
+author: "Noam Ross"
+date: "5/6/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Another machine learning class. I feel it will just like all other machine learning model class. objective is similary to all other class. Talk about accuracy, interpretablity, what situation to use it, how accurate is this model when compare with other model.
+
+
+```{r}
+library(tidyverse)
+library(mgcv)
+theme_set(theme_minimal())
+```
+
+## Introduction to Generalized Additive Models
+
+### introduction
+
+```{r}
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

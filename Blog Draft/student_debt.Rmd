@@ -1,0 +1,35 @@
+---
+title: "analyze_student_debt"
+author: "Yifei Liu"
+date: "5/19/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+theme_set(theme_minimal())
+```
+
+
+```{r}
+debt_school <- read_csv("/Users/yifeiliu/Documents/R/data/EDA/Blog_draft/Average_Debt_Per_Borrower_School.csv")
+
+percent_school <- read_csv("/Users/yifeiliu/Documents/R/data/EDA/Blog_draft/Percentage_of_Graduates_With_Student_Loan_Debt_School_Rankings.csv")
+
+```
+
+
+
+
+
+
+Reference: (How Student Loan Debt Has Changed Over the Past Decade: By School and State)[https://lendedu.com/blog/student-loan-debt-decade-comparison/]
+
+
+
+
+
