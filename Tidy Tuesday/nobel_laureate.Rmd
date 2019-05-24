@@ -1,0 +1,501 @@
+---
+title: "nobel_laureate_publications"
+author: "Yifei Liu"
+date: "5/23/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(ggthemes)
+library(ggrepel)
+library(rnaturalearth)
+library(RISmed)
+library(tidytext)
+library(sf)
+library(countrycode)
+theme_set(theme_minimal())
+
+```
+
+
+
+```{r warning=F, message=F}
+nobel_winners <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-05-14/nobel_winners.csv")
+nobel_winner_all_pubs <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-05-14/nobel_winner_all_pubs.csv")
+```
+
+## EDA
+
+```{r}
+# how many field we have
+nobel_winners %>% 
+  distinct(category)
+
+# we have six field, I'm supprise that they include economics as Nobel prize. 
+
+nobel_winners %>%
+  group_by(prize_year, category) %>%
+  count() %>%
+  ggplot(aes(n, fill = category)) +
+  geom_bar(show.legend = F) +
+  facet_wrap(~ category) +
+  labs(x = "", y = "",
+       title = "How many people share Nobel prize")
+
+
+```
+
+we can see most nobel award in literature in for one personal but other price are award for more than one people, probabily indicate there are more than one siginifcant topic or more people work on similary topic but not in a team. 
+
+```{r}
+nobel_winners %>%
+  group_by(prize_year, laureate_type, category) %>%
+  count() %>%
+  ggplot(aes(prize_year, n, color = laureate_type)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth() +
+  facet_wrap(~ category)
+
+```
+
+in this line chart, we can also see there are more people share Nobel award in real science filed such as *chemistry, medicine, physics* and only nobel peace laureate have organization type and others are just inidividual. 
+
+### Gender difference
+
+```{r}
+
+nobel_winners %>%
+  count(gender) %>%
+  na.omit() %>%
+  ggplot(aes(gender, n, fill = gender)) +
+  geom_col(show.legend = F) +
+  geom_text(aes(label = n, y = n),
+            hjust = -.05) +
+  coord_flip() +
+  labs(x = "", y = "",
+       title = "Gender Gap in Nobel Prize")
+
+nobel_winners %>%
+  count(gender, category) %>%
+  na.omit() %>%
+  ggplot(aes(gender, n, fill = gender)) +
+  geom_col(show.legend = F) +
+  geom_text(aes(label = n, y = n)) +
+  facet_wrap(~ category) +
+  coord_flip() +
+  labs(x = "", y = "",
+       title = "Gender Gap in different category")
+
+nobel_winners %>%
+  group_by(prize_year, gender, category) %>%
+  count() %>%
+  na.omit() %>%
+  ggplot(aes(prize_year, n, color = gender)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm") +
+  facet_wrap(~ category) +
+  theme(legend.position = "bottom") +
+  labs(x = "", y = "",
+       title = "Gender gap didn't change as time went by")
+```
+
+in first graph, we can see there are significant gap between man and women. 
+in second graph, And the gap are much wider in Physics, economics, and chemistry area. 
+in third graph, As time passed by, the gender gap does not seem to pass by. 
+
+### Age of Nobel Laureate winer
+
+I heard a lot of about you have live long enough to win a nobel lecture, let see is it true or not. 
+
+```{r}
+nobel_age <- nobel_winners %>%
+  mutate(age = prize_year - year(birth_date)) 
+
+nobel_age %>%
+  ggplot(aes(prize_year, age, group = 1, color = category)) +
+  geom_point(size = 2) +
+  geom_text(aes(label = ifelse((age < 26 | age > 88), paste(full_name, age), "")), hjust = "inward") +
+  geom_smooth() +
+  theme(legend.position = "none") +
+  labs(title = "Age and prize wining year relationship",
+       x = "",
+       y = "Nobel laureate age")
+
+nobel_age %>%
+  ggplot(aes(prize_year, age)) +
+  geom_point(color = "goldenrod4") +
+  geom_smooth(method = "loess", col = "grey30") +
+  geom_ribbon(ymin = 45, ymax = 75, alpha = 0.1, fill = "blue") +
+  geom_hline(yintercept = c(45, 75), lty = "dotted") +
+  geom_hline(yintercept = 60, lty = "dashed") +
+  facet_wrap(~ category) +
+  theme(legend.position = "none") +
+  labs(title = "Age and prize wining year relationship",
+       x = "",
+       y = "Nobel laureate age") 
+
+
+
+```
+
+we can see the the nobel laureate age have a upward trend which indicate the there indeed require people to live longer to win a nobel prize. 
+
+
+```{r}
+nobel_age %>%
+  ggplot(aes(category, age, color = category)) +
+  geom_boxplot(aes(fill = category), alpha = 0.25) +
+  geom_jitter(alpha = 0.5, height = 0, width = 0.25) +
+  theme(legend.position = "none") +
+  labs(title = "Age distribution in each category",
+       x = "",
+       y = "Nobel laureate age")
+  
+```
+
+
+### Relationship between country and noble prize
+
+deal with missing data first.
+
+```{r}
+nobel_winners %>%
+  filter(is.na(organization_country)) %>% 
+  count(category) %>%
+  mutate(category = fct_reorder(category, n)) %>%
+  ggplot(aes(category, n, fill = category)) +
+  geom_col(show.legend = F) +
+  coord_flip() +
+  labs(title = "Nobel laureate with missing organization nation",
+       y = "", 
+       x = "")
+
+```
+
+we can see the most missing data exist in Peace and Literature category, we can just filter them out, since these two categories really doesn't matter. But just keep in mind the missing data. 
+
+```{r}
+
+# consider Federal Republic of Germany and Soviet to their current countries. 
+nobel_winners %>%
+  mutate(organization_country = case_when(organization_country == "Federal Republic of Germany" ~ "Germany",
+                                          organization_country == "Union of Soviet Socialist Republics" ~ "Russia",
+                                          T ~ organization_country)) %>%
+  count(organization_country) %>%
+  na.omit() %>%
+  mutate(organization_country = fct_reorder(organization_country, n)) %>%
+  top_n(10) %>%
+  ggplot(aes(organization_country, n, fill = organization_country)) +
+  geom_col(show.legend = F) +
+  coord_flip()+
+  labs(x = "", y = "",
+       title = "Top 10 country nobel laureates")
+
+```
+
+we can see us has the most nobel prize winers. 
+
+We can further examine how many of these people are immigration and how many of them are US born. Let's only examin *chemistry, medicine, physics and Economics*
+
+```{r}
+nobel_small <- nobel_winners %>%
+  filter(category %in% c("Chemistry", "Medicine", "Physics", "Economics"))
+
+nobel_small %>%
+  mutate(prize_decade = prize_year %/% 10 * 10) %>%
+  count(prize_share, category,prize_decade, sort = T) %>%
+  ggplot(aes(prize_decade, n)) +
+  geom_jitter(aes(size = n, color = prize_share)) +
+  scale_size_continuous(range = c(1, 10))
+
+country_name <- regex(codelist$country.name.en %>% paste(collapse = "|"))
+
+
+nobel_origin <- nobel_small %>%
+  select(prize_year, category, birth_country, birth_date, organization_country, laureate_id) %>%
+  mutate(birth_country = case_when(birth_country == "Scotland" ~ "United Kingdom",
+                                   birth_country == "British West Indies (Saint Lucia)" ~ "United Kingdom",
+                                   T ~ birth_country), 
+         birth_country = str_extract(birth_country, pattern = country_name))
+
+nobel_us <- nobel_origin %>%
+  filter(organization_country == "United States of America",
+         birth_country != "United States") 
+
+nobel_us %>%
+  count(birth_country) %>%
+  mutate(birth_country = fct_reorder(birth_country, n)) %>%
+  top_n(10, n) %>%
+  ggplot(aes(birth_country, n, fill = birth_country)) +
+  geom_col(show.legend = F)+
+  coord_flip() +
+  expand_limits(y = 20) +
+  labs(x = "",
+       y = "",
+       title = "Which countries contribute the most Nobel laureates to the U.S.")
+
+
+nobel_us %>%
+  group_by(decade = (prize_year %/% 10)*10) %>%
+  count(birth_country) %>%
+  top_n(1) %>%
+  ggplot(aes(decade, n)) +
+  geom_point() +
+  geom_label_repel(aes(label = birth_country)) +
+  labs(x = "", y = "Number of Nobel Laureate",
+       title = "Which countries contribute most nobel laureate to U.S. in each dacde",
+       subtitle = "exclude peace and literature")
+
+```
+we can say exclude *Peace and Literature*, other countries countrite 121 noble lecture to United States, count 33.7%
+
+Let's take a look at which organization have the most Nobel laureate in *nobel_small* dataset
+
+```{r}
+
+nobel_small %>%
+  count(organization_name, sort = T) %>%
+  mutate(organization_name = fct_reorder(organization_name, n)) %>%
+  top_n(10) %>%
+  ggplot(aes(organization_name, n, fill = organization_name)) +
+  geom_col(show.legend = F) +
+  coord_flip() +
+  expand_limits(ymax = 40) +
+  labs(x = "", y = "",
+       title = "Which institution produce the most Laureate")
+
+state_nobel <- nobel_small %>%
+  filter(organization_country == "United States of America") %>%
+  separate(organization_city, into = c("city", "state"), sep = ", ") %>%
+  mutate(state = str_to_lower(state.name[match(state, state.abb)])) %>%
+  mutate(state = case_when(organization_name == "University of Delaware" ~ "delaware",
+                           city == "Washington" ~ "virginia",
+                           city == "Long Island" ~ "new york",
+                           T ~ state)) %>%
+  #filter(is.na(state)) check state with na data
+  count(state, sort = T)
+
+us <- map_data("state") %>%
+  full_join(state_nobel, by = c("region" = "state")) %>%
+  replace_na(list(n = 0))
+
+ggplot() + 
+  geom_polygon(data = us, aes(x=long, y = lat, fill = n, group = group)) + 
+  coord_map("albers", lat0 = 39, lat1 = 45) +
+  scale_fill_continuous(type = "viridis") +
+  labs(title = "which state have the most nobel laureates",
+       fill = "# winners") +
+  theme_map() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 15))
+
+
+```
+
+As expected, California, Massachusetts, new york have the most nobel laureate in the US. University of California, Harvard University, MIT and Stanford University produce the most Nobel Laureate. 
+
+let's look at each filed, which area of word got reword the most. Like if the motivation of award is "in recognition of their work on immunity" we know that because immunity.
+
+let's take a look at nobel medicine field. 
+
+```{r}
+nobel_medicine <- nobel_winners %>%
+  filter(category == "Medicine")
+
+# do some data clearning
+remove_words <- stop_words %>%
+  add_row(word = c("discoveries", "relating", "role", "played", "organization", "differentiated", "successful","research" ,"weapon"),
+          lexicon = "custom")
+
+nobel_medicine %>%
+  select(prize_year, motivation) %>%
+  group_by(prize_year) %>%
+  sample_n(1) %>%
+  # remove the dublicate motivation
+  ungroup() %>%
+  unnest_tokens(bigram, motivation, token = "ngrams", n = 2) %>%
+  separate(bigram, c("word1", "word2"), sep = " ") %>%
+  filter(!word1 %in% remove_words$word,
+         !word2 %in% remove_words$word) %>%
+  unite(bigram, word1, word2, sep = " ")
+
+
+
+```
+Here is a full list of dataset which you can just put in google bigram + nobel prize and have you research result. I don't think semetic analysis will be necessary for this analysis. And after remove most of stoping word, I don't feel the need to visulazzing a network of bigram necessary. I test another method but didn't really work either. Appendix:1
+
+
+take a look at noble laureate paper. 
+
+I'm curious how long it take for a publish paper to be published to get a noble prize. 
+
+```{r}
+nobel_year <- nobel_winner_all_pubs %>%
+  filter(is_prize_winning_paper == "YES") %>%
+  mutate(duration = prize_year - pub_year,
+         category = str_to_title(category),
+         decade = prize_year %/% 10 * 10) %>%
+  # filter(duration < 0), there are several publication are wired, fitler them out
+  filter(duration > 0) 
+
+nobel_year %>%
+  ggplot(aes(prize_year, duration)) +
+  geom_point(color = "goldenrod4") +
+  geom_ribbon(ymin = 10, ymax = 30, alpha = 0.1, fill = "blue") +
+  geom_hline(yintercept = c(10, 30), lty = "dotted") +
+  geom_hline(yintercept = 20, lty = "dashed") +
+  theme(legend.position = "none") +
+  geom_smooth() +
+  facet_wrap(~ category) +
+  labs(x = "", y = "# year",
+      title = "After publication how many year it took to got Nobel Prize")
+
+nobel_year %>%
+  ggplot(aes(as.factor(decade), duration, group_by(decade))) +
+  geom_boxplot() +
+  facet_wrap(~ category) +
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(x = "", y = "# year",
+      title = "After publication how many year it took to got Nobel Prize")
+
+
+```
+we can see in both geom_smooth chart and box chart the median duration of waiting year become more widen and clear upward trend in chmeisty and medicine, upward trend unclear in physics.
+
+
+```{r}
+pubs_enriched <- nobel_winner_all_pubs %>%
+  group_by(laureate_id, category, prize_year) %>%
+  mutate(paper_before = rank(pub_year - 1, ties.method = "first"),
+         total_paper = n(),
+         position_in_career = paper_before / total_paper) %>%
+  arrange(laureate_name, pub_year) %>%
+  ungroup()
+
+pubs_enriched %>%
+  filter(is_prize_winning_paper == "YES") %>%
+  ggplot(aes(position_in_career)) +
+  geom_histogram()
+
+pubs_enriched %>%
+  mutate(prize_decade = prize_year %/% 10 * 10) %>%
+  filter(is_prize_winning_paper == "YES") %>%
+  ggplot(aes(as.factor(prize_decade), position_in_career)) +
+  geom_boxplot(aes(fill = category), alpha = 0.5) +
+  geom_jitter(alpha = 0.5, height = 0, width = 0.25) +
+  facet_wrap(~ category) +
+  theme(legend.position = "none") +
+  labs(title = "",
+       x = "",
+       y = "% of total paper") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme(axis.text.x = element_text(angle = 90))
+
+```
+
+most people who earn nobel prize, get the prize winning paper publish in their early in their career, interesing. 
+
+we can see there are no clear trend in terms of position in career and nobel prize winning
+
+
+```{r}
+pubs_enriched %>%
+  mutate(category = str_to_title(category)) %>%
+  group_by(laureate_id) %>%
+  mutate(first_pub_year = min(pub_year)) %>%
+  filter(pub_year - first_pub_year < 75) %>%
+  ggplot(aes(pub_year - first_pub_year, fill = is_prize_winning_paper)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~ category) +
+  facet_wrap(~ category) +
+  labs(title = "Typical arc of a nobel prize winner's career",
+       x = "year into their publishing career",
+       fill = "Winning paper") +
+  theme(legend.position = "bottom")
+
+
+
+```
+
+Most nobel-prize winning papers are in the first 20 years of someone's career
+
+A winner's publishing producitivity peaks about 30 years after they publish their first paper.
+
+
+
+
+Conclusion:
+
+1. Gender Gap: most nobel winners are men. (expected), and this gap didn't close in recent yeaqrs (surprising)
+2. Age issue: the overall trend is a slow upward trend, (expected) 
+3. Prize sharing: there are more and more people share Nobel prize (expected)
+3. Rich country: Rich countries win the most nobel prize. (expected)
+5. Scientist nationality: Foreign Scientist contribute 33% of U.S. nobel prize count. (expected)
+6. U.S. nobel prize: mostly come from good University (expected)
+7. Waiting for the Prize: On average, it took longer for scientist to get a nobel prize (expected)
+8. Winning paper published year: Most winning paper publish early in their career (expected)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Appendix:
+
+1. 
+
+I used this method try to filter out non medical term, but find out in this case, my medical dictionary not very help, filter out critical term such as _roundworm parasites_ in 2015 speech. I don't really have a good method to unnest_token this speech and extract key term. 
+
+```{r blah2, ref.label='blah', eval = FALSE}
+medical_term <- read.delim("https://raw.githubusercontent.com/glutanimate/wordlist-medicalterms-en/master/wordlist.txt", header = F)
+
+medical_term <- medical_term %>%
+  as.data.frame() %>% 
+  as.tibble()
+
+
+x <- nobel_medicine %>%
+  select(prize_year, motivation) %>%
+  group_by(prize_year) %>%
+  sample_n(1) %>%
+  # remove the dublicate motivation
+  ungroup() %>%
+  unnest_tokens(bigram, motivation, token = "ngrams", n = 2) %>%
+  separate(bigram, c("word1", "word2"), sep = " ") %>%
+  filter(!word1 %in% remove_words$word,
+         !word2 %in% remove_words$word,
+         word1 %in% medical_term$V1,
+         word2 %in% medical_term$V1) %>% 
+  unite(bigram, word1, word2, sep = " ")
+
+y <- nobel_medicine %>%
+  select(prize_year, motivation) %>%
+  group_by(prize_year) %>%
+  sample_n(1) %>%
+  # remove the dublicate motivation
+  ungroup() %>%
+  unnest_tokens(bigram, motivation, token = "ngrams", n = 2) %>%
+  separate(bigram, c("word1", "word2"), sep = " ") %>%
+  filter(!word1 %in% remove_words$word,
+         !word2 %in% remove_words$word) %>%
+  unite(bigram, word1, word2, sep = " ")
+
+anti_join(y, x, by = "bigram")
+
+```
+
