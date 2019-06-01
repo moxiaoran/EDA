@@ -13,6 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(purrr)
 library(magrittr)
+library(jsonlite)
 library(rlang)
 library(gapminder)
 library(repurrrsive)
@@ -523,6 +524,30 @@ iris %>%
   unnest()
 
 ```
+
+## Food Markets in New York
+
+```{r}
+food_mkts_raw <- fromJSON("https://raw.githubusercontent.com/jennybc/purrr-tutorial/gh-pages/foodMarkets/retail_food_markets.json",
+                          simplifyVector = FALSE)
+
+```
+
+### Voyage of discovery: data
+
+```{r}
+str(food_mkts_raw, max.level = 1, list.len = 5)
+
+food_mkts <- food_mkts_raw[["data"]]
+
+```
+
+### Voyage of discovery: meta and columns
+
+```{r}
+jsonedit(food_mkts_raw[[c("meta", "view")]])
+```
+
 
 
 

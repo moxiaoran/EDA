@@ -277,6 +277,22 @@ p +
 
 
 
+## Build own theme
+
+```{r}
+theme_yifei <- function () { 
+    theme_minimal(base_size=12, base_family="Avenir") +
+    theme(
+            panel.background  = element_blank(),
+            plot.background = element_rect(fill="gray96", colour=NA), 
+            legend.background = element_rect(fill="transparent", colour=NA),
+            legend.key = element_rect(fill="transparent", colour=NA)
+        )
+    
+}
+
+
+```
 
 
 

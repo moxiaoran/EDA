@@ -1,0 +1,51 @@
+---
+title: "trendyy walkthrough"
+author: "Yifei Liu"
+date: "5/26/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(trendyy)
+library(maps)
+library(tigris)
+theme_set(theme_minimal())
+
+```
+
+
+
+
+```{r}
+candidates <- c("Joe Biden", "Kamala Harris", "Beto O'Rourke", "Bernie Sanders", "Elizabeth Warren")
+
+candidate_trends <- trendy(candidates, from = "2019-01-01", to = Sys.Date())
+
+candidate_trends
+```
+
+```{r}
+candidate_city <- candidate_trends %>% 
+  get_interest_city()
+
+us.cities %>%
+  filter(str_detect(name, "Oklahoma City"))
+
+candidate_city %>%
+  distinct(location)
+
+```
+
+
+
+
+
+
+
+
+Reference: [Introducing trendyy](http://josiahparry.com/post/2019-05-25-introducing-trendyy/) 

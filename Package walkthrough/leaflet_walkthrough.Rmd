@@ -1,0 +1,86 @@
+---
+title: "tmap packages"
+author: "Yifei Liu"
+date: "5/29/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tmap)
+library(leafem)
+library(leaflet)
+
+```
+
+
+```{r}
+tmap_mode("view")
+
+tm_shape(world_sf) +
+    tm_polygons("lifeExp")
+
+
+```
+
+
+### set different projection
+
+```{r}
+# !formatR
+library(leaflet)
+m <- leaflet() %>% addTiles()
+m  # a map with the default OSM tile layer
+
+
+# set bounds
+m %>% fitBounds(0, 40, 10, 50)
+
+m <- m %>% setView(-93.65, 42.0285, zoom = 17)
+m
+
+# popup
+m %>% addPopups(-93.65, 42.0285, "Here is the <b>Department of Statistics</b>, ISU")
+rand_lng <- function(n = 10) rnorm(n, -93.65, .01)
+rand_lat <- function(n = 10) rnorm(n, 42.0285, .01)
+
+# use automatic bounds derived from lng/lat data
+m <- m %>% clearBounds()
+
+# popup
+m %>% addPopups(rand_lng(), rand_lat(), "Random popups")
+
+
+```
+
+
+### Interactive choropleth maps
+
+```{r}
+
+greens <- colorNumeric("Greens", domain = NULL)
+
+leaflet(world) %>%
+  addPolygons(color = ~greens(lifeExp))
+
+leaflet(data=world, options =
+          leafletOptions(maxZoom = 5,
+               crs=leafletCRS(crsClass="L.CRS.EPSG4326", code='ESRI:53009',
+                        proj4def= '+proj=moll +lon_0=0 +x_0=0 +y_0=0 +a=6371000 +b=6371000 +units=m +no_defs',
+                        resolutions = c(65536, 32768, 16384, 8192, 4096, 2048)))) %>%
+  addGraticule(style= list(color= '#999', weight= 0.5, opacity= 1)) %>%
+  addGraticule(sphere = TRUE, style= list(color= '#777', weight= 1, opacity= 0.25)) %>%
+  addPolygons(weight = 1, fillColor = ~colorQuantile("YlOrRd", pop)(pop))
+
+tm_shape(world) +
+  tm_polygons("pop")
+
+```
+
+Reference: [Interactive choropleth maps](https://learn.r-journalism.com/en/mapping/census_maps/census-maps/)
+
+
+
