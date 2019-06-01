@@ -12,20 +12,40 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 library(comtradr)
-detach("package:dplyr", unload=TRUE)
-library(dplyr)
+library(tidyverse)
 theme_set(theme_minimal())
 ```
 
 
 ```{r}
-q <- ct_search(reporters = "China",
-               partners = "USA",
-               trade_direction = "exports",
-               start_date = 2010,
-               end_date = 2012)
+ct("World", "reporter")
 
-str(q)
+ct_search(reporters = "World",
+          partners = "World",
+            trade_direction = "all",
+          freq = "annual",
+                start_date = 2010,
+                  end_date = 2010,
+                  commod_codes = "3915")
+
+```
+
+
+
+plastic waste import
+
+```{r}
+ex_2 <- ct_search(reporters = "world",
+                  partners = "All",
+                  trade_direction = "import",
+                  freq = "annual",
+                  start_date = 2010,
+                  end_date = 2010,
+                  commod_codes = "3915")
+
+
+ex_2 %>%
+  arrange(desc(netweight_kg))
 
 ```
 
