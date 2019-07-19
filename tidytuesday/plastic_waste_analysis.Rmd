@@ -485,7 +485,6 @@ we can see the percentage of waste that is mismanaged are lower in high-income c
 
 Let's take a look at pre-trade adjusted mismanaged plastic waste distribution globally. 
 ```{r}
-
 mis_pct_map <- world_sf %>%
   full_join(waste_net_2010 %>%
   mutate(mis_pct = mismanaged_plastic / sum(mismanaged_plastic, na.rm = T)) %>%
@@ -510,12 +509,11 @@ ggplot(mis_pct_map) +
                    label = c("China \n2 GDP \n1th in pop"),
                    box.padding = 1,
                    fontface = "bold") +
-  labs(fill = "Plastic Waste(Kg) Per Capita Per day",
+  labs(fill = "Plastic Waste(Kg) (mis)management % of world",
        x = "",
        y = "",
-       title = "Plastic waste generation per person, 2010",
-       caption = "Source: Our World in Data \n@yifeiliu",
-       subtitle = "Daily Plastic waste net per person per day, measured in kiligrams. This measure adjusted for trade, add plastic waste back to its origin") +
+       title = "Total Plastic waste mismanagement, 2010",
+       caption = "Source: Our World in Data, Comtrade \n@yifeiliu") +
   theme(plot.title = element_text(size = 15, face = "bold"),
         legend.position = "bottom",
         plot.caption =  element_text(hjust = 0))

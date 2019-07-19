@@ -1,0 +1,55 @@
+---
+title: "median_franschise_powerhouses"
+author: "Yifei Liu"
+date: "7/5/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+load packages
+```{r}
+library(dplyr)
+library(tidyverse)
+library(rvest)
+library(janitor)
+theme_set(theme_minimal())
+
+```
+
+load dataset
+```{r}
+media_franchises <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-07-02/media_franchises.csv")
+
+```
+
+Take a look at each franchise, see which one have the highest revenue.
+
+```{r}
+media_franchises %>%
+  group_by(revenue_category) %>%
+  summarize(total = sum(revenue)) %>%
+  arrange(desc(total))
+
+media_franchises %>%
+  group_by(franchise) %>%
+  summarize(total = sum(revenue)) %>%
+  arrange(desc(total))
+
+
+```
+
+we can see by categories most profit category is merchandise, Licensing & retial. 
+
+
+
+
+
+
+
+
+
+
+

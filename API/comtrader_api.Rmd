@@ -20,13 +20,12 @@ theme_set(theme_minimal())
 ```{r}
 ct("World", "reporter")
 
-ct_search(reporters = "World",
-          partners = "World",
-            trade_direction = "all",
-          freq = "annual",
-                start_date = 2010,
-                  end_date = 2010,
-                  commod_codes = "3915")
+ct_search(reporters = "China",
+          partners = "USA",
+          trade_direction = "all",
+          freq = "monthly",
+          start_date = 2018,
+          end_date = 2018)
 
 ```
 

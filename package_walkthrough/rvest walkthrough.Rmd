@@ -1,0 +1,73 @@
+---
+title: "rvest walkthough"
+author: "Yifei Liu"
+date: "6/23/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+
+library(rvest)
+library(tidyverse)
+theme_set(theme_minimal())
+
+```
+
+easy web scraping with R
+
+```{r}
+lego_movies <- read_html("http://www.imdb.com/title/tt1490017/")
+
+lego_movies %>%
+  html_node("strong a span") %>%
+  html_text()
+  
+
+lego_movies %>%
+  html_nodes("#titleCast , .primary_photo+ td a") %>%
+  html_text()
+
+```
+
+
+```{r}
+wiki_pop <- read_html("https://en.wikipedia.org/wiki/List_of_countries_and_dependencies_by_population")
+
+global_pop <- wiki_pop %>%
+  html_nodes(xpath = '//*[@id="mw-content-text"]/div/table') %>%
+  html_table()
+  
+global_pop[[1]]
+
+```
+
+```{r}
+fr_link <- read_html("https://en.wikipedia.org/wiki/List_of_highest-grossing_media_franchises")
+  
+fr_datali <- fr_link %>%
+  html_nodes(xpath = '//*[@id="mw-content-text"]/div/table[2]') %>%
+  html_table()
+
+fr_data <- fr_datali[[1]] %>%
+    clean_names()
+
+fr_data %>%
+  separate_rows(total_revenue_usd, sep = "\\\n", convert = T)
+
+
+```
+
+
+reference: https://www.engineeringbigdata.com/web-scraping-wikipedia-world-population-rvest-r/
+
+
+
+
+
+
+
