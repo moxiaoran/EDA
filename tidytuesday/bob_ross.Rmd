@@ -1,0 +1,248 @@
+---
+title: "Bob Ross Painting"
+author: "Yifei Liu"
+date: "8/13/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+load the packages and dataset
+
+```{r}
+library(tidyverse)
+library(widyr)
+library(ggraph)
+library(igraph)
+library(reshape2)
+library(tidytext)
+library(broom)
+
+custome_theme <- theme_minimal(base_family = "Space Mono") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(face = "italic"))
+
+theme_set(custome_theme)
+
+bob_ross <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-08-06/bob-ross.csv") %>%
+  janitor::clean_names() %>%
+  tidyr::extract(episode, into = c("season", "episode_number"), "S(.*)E(.*)", convert = T, remove = F)
+
+```
+
+
+```{r}
+bob_ross_gathered <- bob_ross %>%
+  gather(element, present, -season, -episode_number, -title, -episode) %>%
+  filter(present == 1) %>%
+  mutate(title = str_to_title(str_remove_all(title, '"')),
+         element = str_to_title(str_replace(element, "_", " "))) %>%
+  select(-present)
+
+```
+
+
+```{r}
+bob_ross_gathered %>%
+  count(element, sort = T) %>%
+  head(25) %>%
+  mutate(element = fct_reorder(element, n)) %>%
+  ggplot(aes(element, n, fill = element)) +
+  geom_col(show.legend = F) +
+  coord_flip() +
+  labs(x = "", y = "")
+  
+
+```
+
+
+```{r}
+bob_ross_gathered %>%
+  add_count(episode) %>%
+  arrange(desc(n)) %>%
+  View()
+
+```
+
+
+How have Ross's paintings been changing over time
+
+```{r}
+by_season_element <- bob_ross_gathered %>%
+  filter(!element %in% c("Tree", "Trees")) %>%
+  group_by(season) %>%
+  mutate(number_episodes = n_distinct(episode)) %>%
+  count(season, element, number_episodes, sort = T) %>%
+  mutate(percent_included = n / number_episodes) %>%
+  group_by(element) %>%
+  mutate(element_total = sum(n)) %>%
+  ungroup()
+
+
+by_season_element %>%
+  filter(element_total >= 100) %>%
+  ggplot(aes(season, percent_included, color = element)) +
+  geom_line() +
+  scale_y_continuous(labels = scales::percent_format()) +
+  expand_limits(y = 0) +
+  facet_wrap(~element)
+
+
+```
+
+
+Could have used: [multiple models with broom](https://r4ds.had.co.nz/many-models.html)
+
+
+
+### Clustering
+
+What tends to appear together
+
+```{r}
+correlations <- bob_ross_gathered %>%
+  add_count(element) %>%
+  filter(n >= 10) %>%
+  pairwise_cor(element, episode, sort = T)
+
+
+correlations %>%
+  filter(item1 == "River") %>%
+  mutate(item2 = fct_reorder(item2, correlation)) %>%
+  ggplot(aes(item2, correlation, fill = correlation > 0)) +
+  geom_col(aes(fill = correlation > 0), show.legend = F) +
+  coord_flip() +
+  scale_fill_brewer(type = "qual", palette = "Set2") +
+  labs(y = "",
+       x = "",
+       title = "What tends to appear with a River",
+       subtitle = "Among elements that appeared in at least 10 times")
+
+```
+
+
+```{r}
+correlations %>%
+  head(100) %>%
+  graph_from_data_frame() %>%
+  ggraph() +
+  geom_edge_link(aes(alpha = correlation)) +
+  geom_node_point() +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1) +
+  theme_void()
+
+
+
+```
+
+### Principle Component Analysis
+
+what dimensions drive a lot of the variation among paintings?
+
+```{r}
+
+binary_matrix <- bob_ross_gathered %>%
+  acast(title ~ element)
+
+# center the columns
+
+centered_matrix <- t(t(binary_matrix) - colMeans(binary_matrix))
+
+svd_result <- svd(centered_matrix)
+
+element_weights <- tidy(svd_result, matrix = "v") %>%
+  mutate(element = colnames(binary_matrix)[column])
+
+element_weights %>%
+  filter(PC <= 4) %>% 
+  group_by(PC) %>%
+  top_n(20, abs(value)) %>%
+  ungroup() %>%
+  mutate(element = reorder_within(element, value, PC)) %>%
+  ggplot(aes(element, value)) +
+  geom_col(aes(fill = value > 0), show.legend = F) +
+  coord_flip() +
+  scale_x_discrete(labels = function(x) gsub("__.+$", "", x)) +
+  scale_fill_brewer(type = "qual", palette = "Set2") +
+  facet_wrap(~ PC, scales = "free") +
+  labs(x = "", y = "",
+       title = "First four principle components for Bob Ross Paintings") 
+  
+
+```
+
+1. Mountain vs Ocean/Beach and deciduous trees
+2. Trees, especially deciduious, vs Ocean
+3. Spring/Summer vs Winter
+4. Lake vs River
+
+
+```{r}
+painting_weights <- tidy(svd_result, matrix = "u") %>%
+  mutate(painting = rownames(binary_matrix)[row])
+
+```
+
+we can ask:
+
+what is the painting is the strongest in principle component 1
+
+```{r}
+painting_weights %>%
+  filter(PC == 1) %>%
+  arrange(desc(value))
+
+
+bob_ross_gathered %>%
+  filter(title == "Frozen Solitude")
+
+painting_weights %>%
+  filter(PC <= 4) %>% 
+  group_by(PC) %>%
+  top_n(20, abs(value)) %>%
+  ungroup() %>%
+  mutate(painting = reorder_within(painting, value, PC)) %>%
+  ggplot(aes(painting, value)) +
+  geom_col(aes(fill = value > 0), show.legend = F) +
+  coord_flip() +
+  scale_x_discrete(labels = function(x) gsub("__.+$", "", x)) +
+  scale_fill_brewer(type = "qual", palette = "Set2") +
+  facet_wrap(~ PC, scales = "free") +
+  labs(x = "", y = "",
+       title = "First four principle components for Bob Ross Paintings") 
+
+
+```
+
+```{r}
+tidy(svd_result, matrix = "d") %>%
+  ggplot(aes(PC, percent)) +
+  geom_point() +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(x = "", y = "")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

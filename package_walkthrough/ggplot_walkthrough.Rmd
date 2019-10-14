@@ -5,7 +5,7 @@ date: "3/29/2019"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, message=F}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
@@ -101,7 +101,6 @@ costs <- disasters %>%
 ggplot(costs, aes(x=year,y=Disaster,color=Disaster))+
   ggbeeswarm::geom_quasirandom(alpha=.75,aes(size=cost),groupOnX = FALSE, show.legend = FALSE)+
   a_dark_theme() +
-  a_main_color() +
   labs(title='Billion Dollar Natural Disasters',
        subtitle='The most costly naturdal disasters from 1980 - 2017',
        y='',
@@ -120,43 +119,12 @@ costs %>%
   geom_line(size = .5, aes(color = Disaster)) +
   geom_point(aes(color = Disaster)) +
   a_plex_theme() +
-  a_main_fill() +
-  a_main_color() +
   labs(title='Natural Disasters and Runaway Cost',
        subtitle='Running total of cost of natural disasters (over $1 billion in estimated cost) from 1980 - 2017',
        caption='Data: New York Times\nOriginal Article: "The Cost of Hurricane Harvey: Only One Recent Storm Comes Close"')
 
 ```
 
-use ggforce to show most damaaged diaster
-
-```{r}
-top_ten <- costs %>%
-  group_by(Disaster) %>%
-  top_n(10, wt = cost)
-
-labels <- costs %>%
-  group_by(Disaster) %>%
-  top_n(1, wt = cost) %>%
-  filter(!Disaster %in% c('Winter Storm', 'Flooding'))
-
-ggplot(top_ten, aes(year, cost, color = Disaster, group = Disaster)) +
-  geom_point() +
-  geom_mark_circle(data = labels, aes(label = name,
-                                      color = Disaster,
-                                      fill = NA),
-                   label.family = 'IBM Plex Mono',
-                   label.fontsize = 8,
-                   label.fill = NA,
-                   label.fontface = 'plain') +
-  a_plex_theme() +
-  a_main_fill() +
-  labs(title='Most Costly Disasters',
-       subtitle='Top ten natural disasters (over $1 billion in estimated cost) by group 1980 - 2017',
-       caption='Data: New York Times\nOriginal Article: "The Cost of Hurricane Harvey: Only One Recent Storm Comes Close"')
-
-
-```
 
 
 Blog Post: [Anatomy of a logistic growth curve](https://www.tjmahr.com/anatomy-of-a-logistic-growth-curve/)
@@ -324,6 +292,16 @@ left_align(gg, c("subtitle", "title", "caption")) %>%
 ```
 
 font issues: https://cinc.rud.is/web/packages/ggeconodist/
+
+
+
+
+
+
+
+
+
+
 
 
 

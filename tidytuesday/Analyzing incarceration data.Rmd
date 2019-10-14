@@ -130,6 +130,8 @@ pop_2015 <- get_acs(geography = "state", variables = "B01003_001")
 
 ```
 
+
+
 ```{r}
 map_data("county") %>%
   tbl_df()

@@ -15,6 +15,14 @@ library(dplyr)
 library(tidyverse)
 library(rvest)
 library(janitor)
+library(ggthemes)
+library(RColorBrewer)
+library(glue)
+library(ggrepel)
+library(skimr)
+library(ggalluvial)
+library(here)
+library(cowplot)
 theme_set(theme_minimal())
 
 ```
@@ -38,10 +46,354 @@ media_franchises %>%
   summarize(total = sum(revenue)) %>%
   arrange(desc(total))
 
+media_franchises %>%
+  group_by(owners) %>%
+  summarize(total = sum(revenue)) %>%
+  arrange(desc(total))
+
+
+media_franchises %>%
+  distinct(franchise, .keep_all = T) %>%
+  count(owners, sort = T)
+
+franchises <- media_franchises %>%
+  group_by(franchise, original_media, year_created, creators, owners) %>%
+  summarize(categories = n(),
+            total_revenue = sum(revenue),
+            #which.max select msot profitbale revenue category
+            most_profitable = revenue_category[which.max(revenue)]) %>%
+  ungroup()
 
 ```
 
-we can see by categories most profit category is merchandise, Licensing & retial. 
+we can see by categories most profit category is merchandise, Licensing & retial. And most valubate media franchises is Pokemon. Walt Disney company own the most valuable franchise in term of # and total $ terms. 
+
+
+### EDA
+
+#### Franchise-level 
+
+```{r}
+franchises %>%
+  arrange(desc(revenue))
+  
+
+
+```
+
+
+
+
+```{r}
+top_franchise <- franchises %>%
+  mutate(franchise = glue("{ franchise } ({ year_created })")) %>%
+  top_n(16, total_revenue)
+
+  
+  
+media_franchises %>%
+  mutate(franchise = glue("{ franchise } ({ year_created })")) %>%
+  semi_join(top_franchise, by = "franchise") %>%
+  mutate(franchise = fct_reorder(franchise, revenue, sum),
+         revenue_category = fct_reorder(revenue_category, revenue, sum)) %>%
+  ggplot(aes(franchise, revenue)) +
+  geom_col(aes(fill = revenue_category)) +
+  coord_flip() +
+  geom_text(aes(y = total_revenue, 
+                label = paste0(scales::dollar(total_revenue, accuracy = 1))), 
+                hjust = -0.2, data = top_franchise) +
+  scale_fill_viridis_d(direction = -1) +
+  scale_y_continuous(labels = scales::dollar_format(suffix = "B")) +
+  labs(x = "", y = "Revenue (Billion)",
+       title = "Highest Grossing Media Franchises",
+       fill = "",
+       caption = "Data source: Wikipedia") +
+  expand_limits(y = 100) +
+  guides(fill = guide_legend(reverse = T)) +
+  theme_fivethirtyeight() +
+  theme(legend.direction = "vertical",
+        legend.position = c(0.8, 0.25),
+        legend.background = element_blank(),
+        legend.text = element_text(face = "bold"),
+        axis.text.y = element_text(face = "bold"),
+        panel.grid = element_blank(),
+        plot.title = element_text(hjust = 0.5))
+
+
+```
+
+we can see which media franchise is most profitable, which forms of media most profitable. 
+
+
+take a look at see which owners have more than one franchise. 
+
+
+
+```{r}
+franchises %>%
+  ggplot(aes(year_created, total_revenue)) +
+  geom_point(aes(color = original_media, size = total_revenue)) +
+  geom_text(aes(label = franchise), check_overlap = T, vjust = 1, hjust = 1) +
+  labs(title = "when were the most profitable franchise been created") +
+  expand_limits(x = 1910) +
+  guides(size = FALSE)
+
+```
+
+which media format make the most amount of money (origin/revenue_categories)
+
+```{r}
+media_franchises %>%
+  group_by(original_media) %>%
+  summarize(revenue = sum(revenue)) %>%
+  arrange(desc(revenue))
+
+
+media_franchises %>%
+  group_by(revenue_category) %>%
+  summarize(revenue = sum(revenue)) %>%
+  arrange(desc(revenue))
+
+# use heatmap
+
+
+
+
+```
+
+
+```{r}
+
+original_media_revenue_categories <- media_franchises %>%
+   mutate(revenue_category = case_when(revenue_category == "Book sales" ~ "Books",
+                                      revenue_category == "Box Office" ~ "Movies",
+                                      revenue_category == "Comic or Managa" ~ "Manga",
+                                      revenue_category == "Home Video/Entertainment" ~ "Home video",
+                                      revenue_category == "Merchandise, Licensing & Retail" ~ "Merchandise",
+                                      revenue_category == "Video Games/Games" ~ "Games",
+                                      T ~ revenue_category)) %>%
+  group_by(original_media) %>%
+  filter(sum(revenue) >= 45) %>%
+  group_by(original_media, revenue_category) %>%
+  summarize(revenue = sum(revenue)) %>%
+  ungroup() %>%
+  mutate(revenue_category = fct_reorder(revenue_category, revenue, sum),
+         original_media = fct_reorder(original_media, -revenue, sum))
+
+
+
+
+```
+
+
+
+```{r}
+
+original_media_revenue_categories %>% 
+  mutate(original_media = fct_rev(original_media),
+         revenue_category = fct_rev(revenue_category)) %>%
+  ggplot(aes(original_media, revenue_category)) +
+  geom_tile(aes(fill = revenue)) +
+  coord_flip() +
+  labs(x = "",
+       y = "",
+       fill = "Revenue") +
+  scale_fill_viridis_c(direction = -1, labels = scales::dollar) +
+  theme(panel.grid = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        legend.key.width = unit(2, "cm"))
+
+```
+
+
+## Excellent examples from other tidytuesday participants
+
+
+```{r}
+
+media_clean <- media_franchises %>%
+  mutate(original_media = case_when(original_media == "Comic strip"  ~ "Cartoon",
+                                    original_media == "Animated film" ~ "Cartoon",
+                                    original_media == "Animated series" ~ "Cartoon",
+                                    original_media == "Animated cartoon" ~ "Cartoon",
+                                    original_media == "Visual novel" ~ "Novel",
+                                    original_media == "Anime" ~ "Manga",
+                                    T ~ original_media),
+         original_media = fct_lump(original_media, 8),
+         revenue_category = case_when(revenue_category == "Book sales" ~ "Books",
+                                      revenue_category == "Box Office" ~ "Movies",
+                                      revenue_category == "Comic or Managa" ~ "Manga",
+                                      revenue_category == "Home Video/Entertainment" ~ "Home video",
+                                      revenue_category == "Merchandise, Licensing & Retail" ~ "Merchandise",
+                                      revenue_category == "Video Games/Games" ~ "Games",
+                                      T ~ revenue_category))
+
+media_group <- media_clean %>%
+  group_by(original_media, revenue_category, ) %>%
+  summarize(total = n(),
+            total_revnue = sum(revenue))
+
+meida_lodes <- to_lodes_form(media_group, axes = 1:2)
+
+my_colors <- colorRampPalette(brewer.pal(8, "Dark2"))(17)
+
+meida_lodes %>%
+  ggplot(aes(x = x, y = total_revnue, stratum = stratum, alluvium = alluvium,
+             fill = stratum, label = stratum)) +
+  scale_x_discrete(expand = c(.05, .05), labels = c("Original Format", "Revenue Streams"),
+                   position = "top") +
+  scale_fill_manual(values = my_colors) +
+  geom_flow(width = 1/6) +
+  geom_stratum(alpha = .5, width = 2/12, size =  1, fill = NA, color = "grey") +
+  geom_text(stat = "stratum", size = 4, family = "Rockwell") +
+  labs(x = "", y = "",
+       title = "How to make money from different media format") +
+  theme(legend.position = "none",
+        panel.grid = element_blank(),
+        axis.text.x = element_text(face = "bold"))
+  
+
+media_franchises %>%
+  filter(original_media == "Anime")
+
+media_franchises %>%
+  mutate(original_media = case_when(original_media == "Comic strip"  ~ "Cartoon",
+                                    original_media == "Animated film" ~ "Cartoon",
+                                    original_media == "Animated series" ~ "Cartoon",
+                                    original_media == "Animated cartoon" ~ "Cartoon",
+                                    original_media == "Visual novel" ~ "Novel",
+                                    T ~ original_media)) %>%
+  count(original_media, sort = T) 
+
+```
+
+
+
+```{r}
+sorted_rev <- media_franchises %>%
+  group_by(franchise) %>%
+  mutate(revenue_perc = round(revenue/sum(revenue)*100, 1)) %>% 
+  select(franchise, revenue_category, revenue, revenue_perc) %>% 
+  arrange(franchise, -revenue_perc) %>%
+  mutate(order = row_number())
+
+
+p <- sorted_rev %>%
+  ungroup() %>% 
+  mutate(franchise = str_replace(franchise, " / ", "\n")) %>% 
+ggplot() +
+  geom_col(aes(x = order,
+               y = revenue_perc,
+               fill = revenue_category),
+           # width affects only the biggest revenue, gives warnings
+           width = 0.9
+           ) +
+  facet_wrap(~franchise, ncol = 10) +
+  scale_x_reverse() +
+  scale_fill_brewer(palette = "Dark2") +
+  coord_polar(theta = "y") +
+  labs(
+    title = "Media Franchise Powerhouses",
+    subtitle = "Different revenue streams as percentage of the total revenue.\nThe outer ring shows the largest revenue stream (full circle is 100%)",
+    caption = "Source: Wikipedia | Graphic: Yifei Liu"
+  ) +
+  theme_void() +
+  theme(text = element_text(family = "Space Mono"),
+    legend.position = "none",
+    plot.background = element_rect(fill = "#fff5ba", color = "#fff5ba"),
+    plot.margin = margin(0, 50, 0, 50),
+    strip.text.x = element_text(size = 1),
+    plot.title = element_text(size = 11, hjust = 0.5,
+                              margin = margin(30, 0, 5, 0)),
+    plot.subtitle = element_text(size = 7, hjust = 0.5,
+                              margin = margin(0, 0, 30, 0)),
+    plot.caption = element_text(size = 6, hjust = 0.5,
+                                margin = margin(30, 0, 30, 0)))
+
+# custom "legend" plot
+l <- tribble(
+  ~category, ~x, ~y,
+  "Video Games/Games", 1.5,  2,
+  "Box Office", 2.15,  2,
+  "Home Video/Entertainment", 3.65, 2,
+  "Music", 4, 2,
+  "TV", 0.5, 1,
+  "Book Sales", 1.15, 1,              
+  "Merchandise, Licensing & Retail", 3.1, 1,
+  "Comic or Manga", 4, 1
+  ) %>% 
+  ggplot(aes(label = category, x = x, y = y,
+             color = category)) +
+  # geom_text(family = "Space Mono Bold",
+  #           hjust = 1, size = 1.5) +
+  geom_label(aes(fill = category),
+             label.r = unit(0, "lines"),
+             label.padding = unit(0.05, "lines"),
+             color = "#fff5ba",
+             hjust = 1, size = 1.5) +
+  scale_fill_brewer(palette = "Dark2") +
+  coord_fixed(ratio = 0.2, xlim = c(0, 4), ylim = c(0, 2.5)) +
+  theme_void() +
+  theme(text = element_text(family = "Space Mono"),
+    legend.position = "none",
+    plot.background = element_rect(fill = "#fff5ba", color = "#fff5ba")
+  )
+
+ggdraw() +
+  draw_plot(p) +
+  draw_plot(l, x = 0.35, y = 0.11, width = 0.52, height = 0.1) 
+
+
+
+
+```
+
+
+
+```{r}
+media_franchises %>%
+  group_by(franchise) %>%
+  mutate(revenue_pct = round(revenue / sum(revenue) * 100, 1)) %>%
+  select(franchise, revenue_category, revenue, revenue_pct) %>%
+  arrange(franchise, - revenue_pct) %>%
+  mutate(order = row_number())
+  
+sorted_rev %>%
+  ungroup() %>%
+  mutate(franchises = str_replace(franchise, " / ", "\n")) %>%
+  ggplot() +
+  geom_col(aes(x = order, y = revenue_perc, fill = revenue_category), width = 1) +
+  facet_wrap(~ franchises, ncol = 10) +
+  scale_x_reverse() +
+  scale_fill_brewer(palette = "Dark2") +
+  coord_polar(theta = "y") +
+  theme_void() +
+  labs(title = "Media Franchises Powerhouse",
+       subtitle = "Differet revneue streams as percentage of the total revneu. \nThe outer ring shows the largest revneue stream(full circle is 100%)",
+       caption = "Data source: Wikipedia | Graphic: Yifei Liu") +
+  theme(legend.position = "none",
+        text = element_text(family = "Space Mono"),
+        plot.background = element_rect(fill = "#fff5ba", color = "#fff5ba"),
+    plot.margin = margin(0, 50, 0, 50),
+    strip.text.x = element_text(size = 1),
+    plot.title = element_text(size = 11, hjust = 0.5,
+                              margin = margin(30, 0, 5, 0)),
+    plot.subtitle = element_text(size = 7, hjust = 0.5,
+                              margin = margin(0, 0, 30, 0)),
+    plot.caption = element_text(size = 6, hjust = 0.5,
+                                margin = margin(30, 0, 30, 0)))
+
+```
+
+
+
+
+
+
+
+
+
 
 
 

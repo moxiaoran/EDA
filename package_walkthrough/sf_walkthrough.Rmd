@@ -1,0 +1,68 @@
+---
+title: "sf and ggplot"
+author: "The Amazing Internet"
+date: "8/15/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Try to reproduce amazing chart done by others
+
+Learning by copying the best
+
+
+## [Bivariate maps with ggplot2 and sf](https://timogrossenbacher.ch/2019/04/bivariate-maps-with-ggplot2-and-sf/)
+
+outline
+
+1. Read in the thematic data and gedata and join them
+2. Define a general theme
+3. create a univarite theme showin the average income
+4. Create a bivriate thematic shoing average income and income inequality
+
+```{r}
+library(rstudioapi)
+library(tidyverse) # ggplot2, dplyr, tidyr, readr, purrr, tibble
+library(magrittr) # pipes
+library(lintr) # code linting
+library(sf) # spatial data handling
+library(raster) # raster handling (needed for relief)
+library(viridis) # viridis color scale
+library(cowplot) # stack ggplots
+library(rmarkdown)
+library(checkpoint)
+
+```
+
+
+
+```{r}
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

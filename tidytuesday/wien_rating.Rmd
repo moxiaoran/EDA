@@ -22,6 +22,11 @@ library(glmnet)
 library(scales)
 library(broom)
 library(tidytext)
+library(ggtext)
+library(showtext)
+library(tigris)
+font_add_google("Lato", regular.wt = 300, bold.wt = 700)
+
 library(maps)
 theme_set(theme_minimal())
 
@@ -283,9 +288,13 @@ lexicon %>%
   ggplot(aes(term, estimate, fill = direction)) +
   geom_col() +
   coord_flip() +
+  scale_fill_carto_d(type = "qualitative") +
   labs(x = "",
        y = "",
-       title = "What words are predictive of a wine's score?")
+       title = "What words are predictive of a wine's score?") +
+  theme(plot.title = element_text(size = 28),
+        legend.position = "bottom",
+        text = element_text(family = "Lato"))
 
 
 ```

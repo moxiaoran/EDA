@@ -1,0 +1,60 @@
+---
+title: "HK riot twitter account"
+author: "Yifei Liu"
+date: "8/19/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+The purpose of this analysis
+
+1. This is timely topic - [Information operations directed at Hong Kong](https://blog.twitter.com/en_us/topics/company/2019/information_operations_directed_at_Hong_Kong.html), twitter ban around 1000 account - allegedly Chinese state coordinate bot, which were were deliberately and specifically attempting to sow political discord in Hong Kong. 
+2. Bot is common in all social media platform
+3
+
+
+```{r}
+library(tidyverse)
+library(ISOcodes)
+library(tweetbotornot) # devtools::install_github("mkearney/tweetbotornot")
+
+custome_theme <- theme_minimal(base_family = "Space Mono") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(face = "italic"))
+
+theme_set(custome_theme)
+
+china_account_02 <- read_csv("/Users/yifeiliu/Documents/R/data/EDA/china_082019_2_tweets_csv_hashed.csv")
+china_account_01 <- read_csv("/Users/yifeiliu/Documents/R/data/EDA/china_082019_1_tweets_csv_hashed.csv")
+
+
+dim(china_account_01)
+head(china_account_01)
+
+china_account_01 %>%
+  count(account_language, sort = T)
+
+china_account_01 %>%
+  filter(account_language == "zh-cn") %>%
+  head(20)
+
+china_account_01 %>%
+  group_by(user_display_name) %>%
+  count(sort = T)
+
+
+
+```
+
+
+
+
+
+
+
+
+

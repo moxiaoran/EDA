@@ -256,6 +256,13 @@ staticplot = ggplot(gdp_formatted, aes(rank, group = country_name,
 ```
 
 
+https://github.com/thomasp85/gganimate/issues/279
+https://d4tagirl.com/2017/05/how-to-plot-animated-maps-with-gganimate
+https://www.aliesdataspace.com/2019/05/animation-station/
+https://www.blog.cultureofinsight.com/2017/09/animated-choropleth-maps-in-r/
+https://github.com/thomasp85/transformr
+
+
 
 
 

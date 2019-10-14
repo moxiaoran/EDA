@@ -1,0 +1,59 @@
+---
+title: "PG&E Energy Shutdown project"
+author: "Yifei Liu"
+date: "10/13/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+library(tidyverse)
+library(tidycensus)
+library(rcartocolor)
+library(sf)
+
+```
+
+
+
+
+
+```{r}
+
+# PG&E shape file
+
+cali_non <- read_sf("/Users/yifeiliu/Documents/R/data/book_exercise/geocom/PUBLIC_PSPS_10-09-19_D-02_BaseLine_1008_1039.kmz")
+
+cali <- read_sf("/Users/yifeiliu/Documents/R/data/book_exercise/geocom/PUBLIC_PSPS_10-10-19_B-07_T_24hrs_1010_0739.kmz")
+
+# California population density data
+
+cali_pop <- get_acs(geography = "county",state = "CA",
+                    variables = "B01003_001",
+                    year = 2017, geometry = T) %>%
+  st_transform(crs = st_crs(cali))
+
+ggplot() +
+  geom_sf(data = cali_pop, aes(fill = estimate / 1000000), color = "grey90") +
+  geom_sf(data = cali_non, fill = "black", color = NA) +
+  geom_sf(data = cali, fill = "black", color = NA) +
+  scale_fill_carto_c(palette = "PinkYl") +
+  theme_void() +
+  labs(fill = "Population(M)",
+       title = "PG&E shut off power in California",
+       subtitle = "Black area: Area have been turned off power by PG&E due to safety reason | Color palette: indicate population density",
+       caption = "Data Source: PG&E | Graphic: Yifei Liu") +
+  guides(fill = guide_colourbar(barheight = 0.3, barwidth = 20, direction = "horizontal", ticks = F)) +
+  theme(legend.position = "bottom",
+        text = element_text(family = "Lato", color = "#656c78"),
+        plot.title = element_text(face = "bold", hjust = 0.5, size = 26),
+        plot.subtitle = element_text(face = "italic", hjust = 0.5, size = 12),
+        plot.caption = element_text(hjust = 0))
+
+```
+

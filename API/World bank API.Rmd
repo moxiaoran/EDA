@@ -20,7 +20,6 @@ library(dplyr)
 library(scales)
 library(wbstats)
 theme_set(theme_minimal())
-library(data360r)
 ```
 
 

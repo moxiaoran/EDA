@@ -18,14 +18,31 @@ theme_set(theme_minimal())
 
 
 ```{r}
-ct("World", "reporter")
+ex_1 <- ct_search(reporters = "USA",
+                  partners = "Mexico",
+                  trade_direction = "imports")
 
-ct_search(reporters = "China",
-          partners = "USA",
-          trade_direction = "all",
-          freq = "monthly",
-          start_date = 2018,
-          end_date = 2018)
+# all shipments related to cars between US and all other countries, between 2015 - 2018
+# perform "vehicle" query
+
+vehicle_codes <- ct_commodity_lookup("vehicle",
+                                     return_code = T,
+                                     return_char = T)
+
+# Make API call
+
+chunk <- function(x, n) split(x, sort(rank(x) %% n))
+vehicle_codes <- chunk(vehicle_codes, 6)
+
+
+
+map(vehicle_codes,function(x)  ct_search(reporters = "USA",
+                  partners = "Mexico",
+                  trade_direction = "import",
+                  start_date = 2015,
+                  end_date = 2019,
+                  commod_codes = x))
+
 
 ```
 

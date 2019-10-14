@@ -17,6 +17,10 @@ library(dplyr)
 library(ggplot2)
 library(tidyxl)
 library(unpivotr)
+library(ggtext)
+library(showtext)
+library(rcartocolor)
+font_add_google("Lato", regular.wt = 300, bold.wt = 700)
 theme_set(theme_minimal())
 
 
@@ -120,7 +124,16 @@ major_fields %>%
   summarize(sum = sum(value)) %>%
   ggplot(aes(year, sum, color = field2)) +
   geom_line() +
-  expand_limits(y = 0)
+  expand_limits(y = 0) +
+  labs(color = "Major",
+       title = "How many PHD in each field",
+       caption = "Data: Nation Center for Science and Engineering Statistics | Graphic: Yifei Liu",
+       x = "", y = "") +
+  scale_color_carto_d() +
+  theme(legend.position = "bottom",
+        plot.caption = element_text(hjust = 0),
+        text = element_text(family = "Lato"),
+        plot.title = element_text(face = "bold", size = 28, hjust = 0.5))
 
 fine_major %>%
   filter(!is.na(value)) %>%

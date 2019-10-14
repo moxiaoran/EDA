@@ -1,0 +1,44 @@
+---
+title: "Color Palette Practice"
+author: "Yifei Liu"
+date: "10/2/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load packages
+
+```{r}
+library(RColorBrewer)
+library(rcartocolor)
+library(unikn)
+
+```
+
+
+# RColorBrewer
+
+[Get a long color palette with RColorBrewer](https://www.r-graph-gallery.com/40-rcolorbrewer-get-a-longer-palette)
+
+
+
+
+## unikn
+
+[unikn](https://cran.r-project.org/web/packages/unikn/vignettes/colors.html)
+
+
+
+
+
+
+
+
+
+
+
+
+

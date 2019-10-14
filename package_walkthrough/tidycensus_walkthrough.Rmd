@@ -1,0 +1,114 @@
+---
+title: "Tidycensus walkthrough"
+author: "Yifei Liu"
+date: "9/19/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(tidycensus)
+library(censusapi)
+library(rcartocolor)
+library(sf)
+options(tigris_use_cache = TRUE)
+```
+
+
+```{r}
+
+v17 <- load_variables(2017, "acs5", cache = TRUE)
+
+View(v17)
+
+```
+
+
+```{r}
+net_migration <- get_estimates(geography = "county",
+                               variables = "RNETMIG",
+                               geometry = TRUE,
+                               shift_geo = TRUE)
+
+net_migration
+```
+
+
+```{r}
+order = c("-15 and below", "-15 to -5", "-5 to +5", "+5 to +15", "+15 and up")
+
+net_migration <- net_migration %>%
+  mutate(groups = case_when(
+    value > 15 ~ "+15 and up",
+    value > 5 ~ "+5 to +15",
+    value > -5 ~ "-5 to +5",
+    value > -15 ~ "-15 to -5",
+    TRUE ~ "-15 and below"
+  )) %>%
+  mutate(groups = factor(groups, levels = order))
+
+ggplot() +
+  geom_sf(data = net_migration, aes(fill = groups, color = groups), lwd = 0.1) +
+  geom_sf(data = tidycensus::state_laea, fill = NA, color = NA, lwd = 0.1) +
+  scale_fill_carto_d(name = "Rate", 
+                     type = "diverging", palette = "TealRose", direction = -1) +
+  scale_color_carto_d(name = "Rate", 
+                     type = "diverging", palette = "TealRose", direction = -1) +
+  coord_sf(datum = NA) +
+  theme_void() +
+  labs(title = "Net migration per 1000 residents by county",
+       subtitle = "US Census Bureau 2017 Population Estimates",
+       fill = "Rate",
+       caption = "US Census | @yifeiliu") +
+  theme(text = element_text(family = "Roboto"),
+    plot.title = element_text(hjust = 0.5, size = 28, face = "bold", margin = margin(20, 0,0,0)),
+    plot.subtitle = element_text(hjust = 0.5, face ="italic", size = 16),
+    plot.caption = element_text(hjust = 0, face = "italic", size = 12),
+    legend.position = "bottom")
+
+
+```
+
+```{r}
+racevars <- c(White = "P005003", 
+              Black = "P005004", 
+              Asian = "P005006", 
+              Hispanic = "P004003")
+
+race <- get_decennial(geography = "tract", variables = racevars, 
+                      state = "DC", county = "District of Columbia", 
+                      geometry = TRUE,
+                      summary_var = "P001001") %>%
+  mutate(percent = 100 * (value / summary_value)) %>%
+  st_transform(26918)
+
+  labs(title = "Net migration per 1000 residents by county",
+       subtitle = "US Census Bureau 2017 Population Estimates",
+       fill = "Rate",
+       caption = "US Census | @yifeiliu") +
+  theme(text = element_text(family = "Roboto"),
+    plot.title = element_text(hjust = 0.5, size = 28, face = "bold", margin = margin(20, 0,0,0)),
+    plot.subtitle = element_text(hjust = 0.5, face ="italic", size = 16),
+    plot.caption = element_text(hjust = 0, face = "italic", size = 12),
+    legend.position = "bottom")
+
+
+```
+
+
+
+# Censusapi dataset
+
+```{r}
+apis <- listCensusApis()
+View(apis)
+```
+
+
+
+
+

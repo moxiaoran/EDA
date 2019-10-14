@@ -1,0 +1,51 @@
+---
+title: 'ggtext: Improved text rendering support for ggplot2'
+author: "Yifei Liu"
+date: "8/30/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(ggtext) # devtools::install_github("clauswilke/ggtext")
+
+```
+
+
+```{r}
+ggplot(iris, aes(Sepal.Length, Sepal.Width, color = Species)) +
+  geom_point(size = 3) +
+  scale_color_manual(
+    name = NULL,
+    values = c(setosa = "#0072B2", virginica = "#009E73", versicolor = "#D55E00"),
+    labels = c(
+      setosa = "<i style='color:#0072B2'>I. setosa</i>",
+      virginica = "<i style='color:#009E73'>I. virginica</i>",
+      versicolor = "<i style='color:#D55E00'>I. versicolor</i>")
+  ) +
+  labs(
+    title = "**Fisher's *Iris* dataset**  
+    <span style='font-size:11pt'>Sepal width vs. sepal length for three *Iris*
+    species</span>",
+    x = "Sepal length (cm)", y = "Sepal width (cm)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_markdown(lineheight = 1.1),
+    legend.text = element_markdown(size = 11)
+  )
+
+```
+
+
+Reference: 
+1. [ggtext](https://github.com/clauswilke/ggtext)
+
+
+
+
+

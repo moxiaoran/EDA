@@ -1,0 +1,190 @@
+---
+title: "R4DsMembership"
+author: "Yifei Liu"
+date: "8/5/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load data and pacakges
+
+```{r}
+library(tidyverse)
+library(skimr)
+library(lubridate)
+library(ggthemes)
+library(ggTimeSeries)
+library(viridis)
+theme_set(theme_minimal())
+
+r4ds_members <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-07-16/r4ds_members.csv") %>%
+  mutate(date = ymd(date),
+         year = factor(year(date)),
+         month = factor(month(date, label = T), levels = month.abb),
+         weekday = factor(wday(date, label = T)))
+
+
+```
+
+
+### Inspect data
+
+```{r}
+skim(r4ds_members)
+
+```
+
+### EDA
+
+let's take a look see how many people join R4DS every day
+
+```{r}
+r4ds_members %>%
+  mutate(daily_in = total_membership - lag(total_membership, default = NA)) %>%
+  ggplot(aes(daily_in)) +
+  geom_histogram(binwidth = 10)
+
+r4ds_members %>%
+  mutate(daily_in = total_membership - lag(total_membership, default = NA)) %>%
+  ggplot(aes(date, daily_in)) +
+  geom_line()
+
+r4ds_members %>%
+  gather(key = "key", value = "value", -date) %>%
+  ggplot(aes(date, value)) +
+  geom_line() +
+  facet_wrap(~ key, scales = "free_y")
+
+
+```
+
+use lubridate pacakge to analyze this time series dataset.
+
+
+```{r}
+r4ds_members %>%
+  mutate(wday = wday(date, label = T)) %>%
+  select(wday, daily_active_members, daily_members_posting_messages) %>%
+  gather(key = "key", value = "value", -wday) %>%
+  ggplot(aes(wday)) +
+  geom_bar() +
+  facet_wrap(~ key, scales = "free_y")
+
+ggplot(r4ds_members, aes(date, daily_active_members))+
+  geom_line(lwd = 1)+
+  facet_wrap(~year, ncol = 1, scales = "free")+
+  scale_x_date(date_breaks = "1 month", date_labels = "%b")+
+  theme_minimal()
+
+
+r4ds_members %>%
+  select(daily_active_members, daily_members_posting_messages, date, year) %>%
+  gather(key = "key", value = "value", daily_active_members, daily_members_posting_messages) %>%
+  mutate(key = str_to_title(str_replace_all(key, "_", " "))) %>%
+  ggplot(aes(date, value)) +
+  geom_area(aes(fill = key), alpha = 0.9) +
+  facet_wrap(~year, ncol = 1, scales = "free")+
+  scale_x_date(date_breaks = "1 month", date_labels = "%b")+
+  scale_fill_brewer(type = "Seq", palette = "Blues") +
+  labs(x = "", y = "Number of Memebers", fill = NULL) +
+  theme(legend.position = "top",
+        text = element_text(family = "Space Mono"))
+
+r4ds_members %>%
+  select(weekly_active_members, weekly_members_posting_messages, date, year) %>%
+  gather(key = "key", value = "value", weekly_active_members, weekly_members_posting_messages) %>%
+  mutate(key = str_to_title(str_replace_all(key, "_", " "))) %>%
+  ggplot(aes(date, value)) +
+  geom_area(aes(fill = key), alpha = 0.9) +
+  facet_wrap(~year, ncol = 1, scales = "free")+
+  scale_x_date(date_breaks = "1 month", date_labels = "%b")+
+  scale_fill_brewer(type = "Seq", palette = "Reds") +
+  labs(x = "", y = "Number of Memebers", fill = NULL) +
+  theme(legend.position = "top",
+        text = element_text(family = "Space Mono"))
+
+
+
+```
+
+### Excellient work from other #tidytuesday participant 
+
+
+#### [Calender heatmap](https://github.com/NewMirai/Tidytuesday/blob/master/tidytuesdayR4DS/plot.r)
+
+
+
+```{r}
+r4ds_members %>%
+  ggplot_calendar_heatmap('date', 'daily_active_members', monthBorderSize = 1.5, monthBorderColour = "black") +
+  scale_fill_viridis(option = "D") +
+  theme_minimal() +
+  facet_wrap(~year, ncol = 1, strip.position = "right") +
+  theme(text = element_text(family = "Space Mono"),
+        panel.spacing = unit(5, "lines"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(colour = NA, fill="black"),
+        plot.background = element_rect(fill="black"),
+        legend.position = "bottom",
+        axis.text.x = element_text(size = 12,colour ="#bfbfbf",vjust = -2),
+        axis.text.y = element_text(size=12,colour = "#bfbfbf"),
+        strip.text = element_text(size=14,colour="#bfbfbf"),
+        legend.text = element_text(colour = "#bfbfbf",size=8),
+        legend.key.width = unit(1.2, "cm"),
+        legend.title = element_text(colour = "#bfbfbf",vjust = .9,size=14),
+        plot.title = element_text(size=20,colour="#bfbfbf",hjust = .5),
+        plot.subtitle = element_text(size=16,colour = "#bfbfbf",hjust = .5),
+        plot.caption = element_text(colour = "#bfbfbf"))+
+  labs(y='',
+       fill="Daily active members",
+       title = "Calendar heatmap of the active members",
+       subtitle = "Made with the ggTimeSeries package for super easy calendar heatmap\n",
+       caption = "#Tidy tuesday | Source: R4DS Slack | @alangel12407606")
+
+
+```
+
+my replicated without look at the code.
+
+```{r}
+r4ds_members %>%
+  ggplot_calendar_heatmap('date', 'daily_members_posting_messages', monthBorderSize = 1.5, monthBorderColour = "black") +
+  scale_fill_viridis() +
+  facet_wrap(~year, strip.position = "right", ncol = 1) +
+  labs(title = "Calender heatmap of most active post",
+       subtitle = "with ggTimeSeries package",
+       x = "", y = "", fill = "Daily Members Posting Messages", 
+       caption = "#Tidytuesday | DataSource: R4DS Slack | @yifei liu") +
+  theme(text = element_text(family = "Space Mono", color = "#bfbfbf"),
+        legend.position = "bottom",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(colour = NA, fill="black"),
+        plot.background = element_rect(fill="black"),
+        legend.key.width = unit(1.4, "cm"))
+
+
+
+```
+
+I think this is great way to visualize these type of calender activities, scuh as flight data, electricity usage data etc. I will definitely use these more in the future. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

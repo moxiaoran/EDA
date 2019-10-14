@@ -1,0 +1,31 @@
+---
+title: "D3 Walkthrough"
+author: "Yifei Liu"
+date: "7/22/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(r2d3)
+bars <- c(10, 20, 30)
+```
+
+
+
+```{d3 data=bars, options=list(color = 'orange')}
+svg.selectAll('rect')
+  .data(data)
+  .enter()
+    .append('rect')
+      .attr('width', function(d) { return d * 10; })
+      .attr('height', '20px')
+      .attr('y', function(d, i) { return i * 22; })
+      .attr('fill', options.color);
+
+
+```
+

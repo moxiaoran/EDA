@@ -1,0 +1,23 @@
+---
+title: 'ManifestoR: An R package for accessing and processing the Manifestor Project''s
+  Data and Corpus of election programmes'
+author: "Yifei Liu"
+date: "8/30/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(ManifestoR)
+
+```
+
+
+
+Reference: 
+1. [ManifestoR](https://github.com/ManifestoProject/manifestoR)

@@ -17,7 +17,9 @@ detach("package:dplyr", unload=TRUE)
 library(dplyr)
 library(rjson)
 library(scales)
-library(streamgraph)
+library(streamgraph) #devtools::install_github("hrbrmstr/streamgraph")
+
+
 
 theme_set(theme_minimal())
 

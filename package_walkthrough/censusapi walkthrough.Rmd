@@ -15,7 +15,6 @@ library(censusapi)
 detach("package:dplyr", unload=TRUE)
 library(dplyr)
 
-
 ```
 
 Try to figure out how may APIs from census do we have
@@ -49,4 +48,31 @@ sahie_states
 
 
 ```
+
+
+
+
+
+## International trade
+
+```{r}
+imports_variables <- listCensusMetadata(name = "timeseries/intltrade/imports/enduse",
+                     type = "variables")
+
+View(imports_variables)
+
+imports_item <- getCensus(name = "timeseries/intltrade/imports/enduse",
+                          vars = c("CTY_NAME", "SUMMARY_LVL2"),
+                          time = c("2018-01"))
+
+
+
+```
+
+
+
+
+
+
+
 

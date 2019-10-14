@@ -1,0 +1,150 @@
+---
+title: 'ggtext: Improved text rendering support fro ggplot2'
+author: "Yifei Liu"
+date: "9/1/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+library(tidyverse)
+library(ggtext) # devtools::install_github("clauswilke/ggtext")
+
+```
+
+
+## Example
+
+### Markdown in theme elements
+
+```{r}
+ggplot(iris, aes(Sepal.Length, Sepal.Width, color = Species)) +
+  geom_point(size = 3) +
+   scale_color_manual(
+    name = NULL,
+    values = c(setosa = "#0072B2", virginica = "#009E73", versicolor = "#D55E00"),
+    labels = c(
+      setosa = "<i style='color:#0072B2'>I. setosa</i>",
+      virginica = "<i style='color:#009E73'>I. virginica</i>",
+      versicolor = "<i style='color:#D55E00'>I. versicolor</i>")
+    ) +
+  labs(
+    title = "**Fisher's *Iris* dataset**  
+    <span style='font-size:11pt'>Sepal width vs. sepal length for three *Iris*
+    species</span>",
+    x = "Sepal length (cm)", y = "Sepal width (cm)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_markdown(lineheight = 1.1),
+    legend.text = element_markdown(size = 11)
+  )
+
+
+```
+
+
+```{r}
+labels <- c(
+  setosa = "<img src='https://upload.wikimedia.org/wikipedia/commons/thumb/8/86/Iris_setosa.JPG/180px-Iris_setosa.JPG'
+    width='100' /><br>*I. setosa*",
+  virginica = "<img src='https://upload.wikimedia.org/wikipedia/commons/thumb/3/38/Iris_virginica_-_NRCS.jpg/320px-Iris_virginica_-_NRCS.jpg'
+    width='100' /><br>*I. virginica*",
+  versicolor = "<img src='https://upload.wikimedia.org/wikipedia/commons/thumb/2/27/20140427Iris_versicolor1.jpg/320px-20140427Iris_versicolor1.jpg'
+    width='100' /><br>*I. versicolor*"
+)
+
+ggplot(iris, aes(Species, Sepal.Width)) +
+  geom_boxplot() +
+  scale_x_discrete(
+    name = NULL,
+    labels = labels
+  ) +
+  theme(
+    axis.text.x = element_markdown(color = "black", size = 11)
+  )
+```
+
+### geoms
+
+the _geom_richtext()_ provides markdown/html labels. Unlike _geom_label()_, the labels can be rotated
+
+```{r}
+df <- data.frame(
+  label = c("Some text **in bold**.",
+            "Linebreaks<br>linbreaks<br>linebreaks",
+            "*x*<sup>2</sup> + 5*x* + *C*<sup>*i*</sub>",
+            "Some <span style='color:blue'>blue text **in bold**.**</span><br>And *italics text.*<br>
+            And some <span style='font-size:18pt; color:black'>large</span> text."),
+  x = c(.2, .1, .5, .9),
+  y = c(.8, .4, .1, .5),
+  hjust = c(0.5, 0, 0, 1),
+  vjust = c(0.5, 1, 0, 0.5),
+  angle = c(0, 0, 45, -45),
+  color = c("black", "blue", "black", "red"),
+  fill = c("cornsilk", "white", "lightblue1", "white")
+)
+
+ggplot(df) +
+  aes(x, y, label = label, angle = angle, color = color, fill = fill,
+      hjust = hjust, vjust = vjust) +
+  geom_richtext(
+    fill = NA, label.color = NA, # remove backgroup and outline
+    label.padding = grid::unit(rep(0, 4), "pt") # remove padding
+  ) +
+  geom_point(color = "black", size = 2) +
+  scale_color_identity() +
+  scale_fill_identity() +
+  xlim(0, 1) + ylim(0, 1)
+
+
+```
+
+
+```{r}
+
+df <- data.frame(
+  label = rep("Lorem ipsum dolor **sit amet,** consectetur adipiscing elit,
+    sed do *eiusmod tempor incididunt* ut labore et dolore magna
+    aliqua.", 2),
+  x = c(0, .6),
+  y = c(1, .6),
+  hjust = c(0, 0),
+  vjust = c(1, 0),
+  orientation = c("upright", "right-rotated"),
+  color = c("black", "blue"),
+  fill = c("cornsilk", "white")
+)
+
+ggplot(df) +
+  aes(
+    x, y, label = label, color = color, fill = fill,
+    box.hjust = hjust, box.vjust = vjust,
+    orientation = orientation
+  ) +
+  geom_textbox(width = unit(0.4, "npc"),
+               fill = NA, label.color = NA,
+               label.padding = grid::unit(rep(0, 4), "pt")) +
+  geom_point(color = "black", size = 2) +
+  scale_discrete_identity(aesthetics = c("color", "fill", "orientation")) +
+  xlim(0, 1) + ylim(0, 1)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,187 @@
+---
+title: 'ggeconodist: new ggplot Economist Themes'
+author: "Yifei Liu"
+date: "8/29/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE, message = F, warning=F}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Since I don't have the fonts from the *theme_econodist* I replace it with a similary one. 
+
+```{r}
+library(tidyverse)
+library(hrbrthemes)
+library(gapminder)
+library(ggeconodist)
+```
+
+
+
+
+```{r}
+theme_econ <- function (econ_text_col = "#3b454a", econ_plot_bg_col = "#d7e6ee", 
+  econ_grid_col = "#bbcad2", econ_font = "Roboto-Regular", 
+  light_font = "Roboto-Light", bold_font = "Roboto-Bold") 
+{
+  theme_minimal(base_family = econ_font) + theme(plot.title = element_text(family = bold_font), 
+    plot.subtitle = element_text(family = light_font, size = 12, 
+      margin = margin(t = -5)), plot.caption = element_text(family = light_font, 
+      size = 10, colour = econ_text_col, lineheight = 1.1), 
+    plot.background = element_rect(fill = econ_plot_bg_col, 
+      colour = econ_plot_bg_col), panel.background = element_rect(fill = econ_plot_bg_col, 
+      colour = econ_plot_bg_col), axis.ticks = element_blank(), 
+    axis.ticks.x = element_blank(), axis.ticks.y = element_blank(), 
+    axis.text = element_text(family = light_font, colour = econ_text_col), 
+    axis.text.x = element_text(family = light_font, size = 10, 
+      colour = econ_text_col), axis.text.y = element_text(hjust = 0, 
+      family = light_font, size = 10, colour = econ_text_col), 
+    axis.line.x = element_blank(), axis.line.y = element_line(colour = econ_grid_col, 
+      size = 0.5), plot.margin = margin(10, 15, 10, 12), 
+    panel.grid.major.x = element_line(linetype = "solid", 
+      size = 0.4, colour = econ_grid_col), panel.grid.major.y = element_line(linetype = "solid", 
+      size = 0.4, colour = econ_grid_col), panel.grid.minor.x = element_blank(), 
+    panel.grid.minor.y = element_blank())
+}
+
+econ_legend_gro <- function (family = "Roboto-Light", label_size = 10, tenth_lab = "10th percentile", 
+  tenth_col = econ_tenth, med_lab = "Median", med_col = econ_median, 
+  ninetieth_lab = "90th percentile", ninetieth_col = econ_ninetieth, 
+  label_col = econ_text_col) 
+{
+  x_pos <- unit(4, "points")
+  y_pos <- unit(label_size/2, "points")
+  yq <- unit(label_size/4, "points")
+  tenth_seg <- segmentsGrob(x0 = x_pos, y0 = y_pos + yq, x1 = x_pos, 
+    y1 = y_pos - yq, default.units = "points", gp = gpar(lwd = 3 * 
+      ggplot2::.pt, lty = "solid", lineend = "square", 
+      col = tenth_col))
+  x_pos <- x_pos + convertUnit(grobWidth(tenth_seg), "points") + 
+    unit(6, "points")
+  tenth_text <- textGrob(label = tenth_lab, x = x_pos, y = y_pos, 
+    hjust = 0, vjust = 0.5, gp = gpar(fontfamily = family, 
+      fontsize = label_size, col = label_col))
+  x_pos <- x_pos + convertUnit(grobWidth(tenth_text), "points") + 
+    unit(label_size, "points")
+  med_pt <- pointsGrob(x = x_pos, y = y_pos, size = unit(label_size, 
+    "points"), pch = 19, gp = gpar(col = med_col, fill = med_col))
+  x_pos <- x_pos + convertUnit(grobWidth(med_pt), "points") + 
+    unit(8, "points")
+  med_text <- textGrob(label = med_lab, x = x_pos, y = y_pos, 
+    hjust = 0, vjust = 0.5, gp = gpar(fontfamily = family, 
+      fontsize = label_size, col = label_col))
+  x_pos <- x_pos + convertUnit(grobWidth(med_text), "points") + 
+    unit(label_size, "points")
+  ninth_seg <- segmentsGrob(x0 = x_pos, y0 = y_pos - yq, x1 = x_pos, 
+    y1 = y_pos + yq, gp = gpar(lwd = 3 * ggplot2::.pt, lty = "solid", 
+      lineend = "square", col = ninetieth_col))
+  x_pos <- x_pos + grobWidth(ninth_seg) + unit(8, "points")
+  ninth_text <- textGrob(label = ninetieth_lab, x = x_pos, 
+    y = y_pos, hjust = 0, vjust = 0.5, gp = gpar(fontfamily = family, 
+      fontsize = label_size, col = label_col))
+  width <- x_pos + grobWidth(ninth_text)
+  vp <- viewport(x = 0, just = "left", default.units = "points", 
+    width = width)
+  gTree(name = "econodist-legend", children = gList(tenth_seg, 
+    tenth_text, med_pt, med_text, ninth_seg, ninth_text), 
+    childrenvp = vp, vp = viewport(x = 0, just = "left", 
+      width = width))
+}
+
+
+
+library(tidyverse)
+library(ggeconodist) # install.packages("ggeconodist", repos = "https://cinc.rud.is")
+
+ggplot(mammogram_costs, aes(x = city)) +
+  geom_econodist(
+    aes(ymin = tenth, median = median, ymax = ninetieth),
+    stat = "identity", show.legend = TRUE
+  ) +
+  scale_y_continuous(expand = c(0,0), position = "right", limits = range(0, 800)) +
+  coord_flip() +
+  labs(
+    x = NULL, y = NULL,
+    title = "Mammoscams",
+    subtitle = "United States, prices for a mammogram*\nBy metro area, 2016, $",
+    caption = "*For three large insurance companies\nSource: Health Care Cost Institute"
+  ) +
+  theme_econ()
+
+```
+
+
+```{r}
+ggplot(mammogram_costs, aes(x = city)) +
+  geom_econodist(
+    aes(ymin = tenth, median = median, ymax = ninetieth), stat = "identity"
+  ) +
+  scale_y_continuous(expand = c(0,0), position = "right", limits = range(0, 800)) +
+  coord_flip() +
+  labs(
+    x = NULL, y = NULL,
+    title = "Mammoscams",
+    subtitle = "United States, prices for a mammogram*\nBy metro area, 2016, $",
+    caption = "*For three large insurance companies\nSource: Health Care Cost Institute"
+  ) +
+  theme_econ() -> gg
+
+grid.newpage()
+left_align(gg, c("subtitle", "title", "caption")) %>% 
+  add_econodist_legend(econodist_legend_grob(), below = "subtitle") %>% 
+  grid.draw()
+
+```
+
+
+
+
+```{r}
+p <- ggplot(mpg, aes(class, hwy)) + theme_ipsum_rc()
+
+(p + geom_boxplot())
+(p + geom_econodist(width = 0.25))
+(p + geom_econodist(aes(fill = factor(drv))))
+
+data("gapminder")
+
+gapminder %>%
+  filter(year %in% c(1952, 1962, 1972, 1982, 1992, 2002)) %>%
+  filter(continent != "Oceania") %>%
+  ggplot(aes(x = factor(year), y = lifeExp, fill = continent)) +
+  geom_econodist(
+    median_point_size = 1.2,
+    tenth_col = "#b07aa1",
+    ninetieth_col = "#591a4f",
+    show.legend = FALSE
+  ) +
+  ggthemes::scale_fill_tableau(name = NULL) +
+  coord_flip() +
+  labs(
+    x = "Year", title = "Life Expectancy", y = NULL,
+    caption = "Example borrowed from @cmdline_tips"
+  ) +
+  facet_wrap(~continent, nrow = 4) +
+  theme_ipsum_rc()
+
+
+```
+
+
+
+
+Reference:
+
+1. [ggeconodist](https://cinc.rud.is/web/packages/ggeconodist/)
+
+
+
+
+
+
+
+
+
