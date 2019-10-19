@@ -1,0 +1,28 @@
+---
+title: 'D3: d3heatmap'
+author: "Yifei Liu"
+date: "10/17/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+load packages
+
+```{r}
+
+library(dendextend)
+library(d3heatmap)
+```
+
+```{r}
+x <- mtcars # [c(2:4,7),1:4]
+
+d3heatmap(x, k_row = 4, k_col = 2)
+
+
+```
+
+

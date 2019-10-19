@@ -15,36 +15,118 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(tidycensus)
 library(rcartocolor)
+library(leaflet)
 library(sf)
+library(zipcode)
+library(leaflet.extras)
+detach("package:dplyr", unload = TRUE)
+library(dplyr)
 
 ```
 
 
 
-
+Read files and process them and write new ones for flexdashboard ot use
 
 ```{r}
 
-# PG&E shape file
+# PG&E shape file: https://www.pge.com/en_US/safety/emergency-preparedness/natural-disaster/wildfires/psps-event-maps.page
 
-cali_non <- read_sf("/Users/yifeiliu/Documents/R/data/book_exercise/geocom/PUBLIC_PSPS_10-09-19_D-02_BaseLine_1008_1039.kmz")
 
-cali <- read_sf("/Users/yifeiliu/Documents/R/data/book_exercise/geocom/PUBLIC_PSPS_10-10-19_B-07_T_24hrs_1010_0739.kmz")
+# cali_non <- read_sf("/Users/yifeiliu/Documents/R/data/book_exercise/geocom/PUBLIC_PSPS_10-09-19_D-02_BaseLine_1008_1039.kmz")
+# cali <- read_sf("/Users/yifeiliu/Documents/R/data/book_exercise/geocom/PUBLIC_PSPS_10-10-19_B-07_T_24hrs_1010_0739.kmz")
 
 # California population density data
 
-cali_pop <- get_acs(geography = "county",state = "CA",
-                    variables = "B01003_001",
-                    year = 2017, geometry = T) %>%
-  st_transform(crs = st_crs(cali))
+# pge close location
+pge <- st_read("/Users/yifeiliu/Documents/R/data/EDA/Blog_draft/pge/pge_simple.gpkg")
 
+# 2010 zip pop 
+zip_pop <- read.table("/Users/yifeiliu/Documents/R/data/EDA/Blog_draft/pge/Gaz_zcta_national.txt", header = T, colClasses = c("character", rep("numeric", 7))) %>%
+  as_data_frame() %>%
+  select(zip = GEOID, pop = POP10, household = HU10)
+  
+# all zip with state info
+data("zipcode")
+
+zip_cali <- zipcode %>%
+  filter(state =="CA") %>%
+  left_join(zip_pop, by = "zip") %>%
+  select(zip, pop, household)
+
+```
+
+
+California zip code shapefile.
+
+```{r}
+# download data from https://catalog.data.gov/dataset/tiger-line-shapefile-2015-2010-nation-u-s-2010-census-5-digit-zip-code-tabulation-area-zcta5-na
+
+pop_zip <- read_sf("/Users/yifeiliu/Documents/R/data/EDA/Blog_draft/pge/tl_2015_us_zcta510.shp")
+
+cali_zip <- zipcode %>%
+  filter(state == "CA")
+
+zip_area <- pop_zip %>%
+  right_join(cali_zip, by = c("ZCTA5CE10" = "zip"))
+
+
+zip_area_proj <- st_transform(zip_area, crs = 4326) # reproject
+
+zip_simply <- rmapshaper::ms_simplify(zip_area_proj, keep = 0.1,
+                                          keep_shapes = TRUE) 
+
+cali_zip <- zip_simply %>%
+  dplyr::select(ZCTA5CE10, city, geometry, latitude, longitude) %>%
+  mutate(area = st_area(geometry))
+
+
+affect_area <- st_intersection(cali_zip, pge) %>%
+  mutate(effect_area = st_area(geometry))
+
+cali_zip <- cali_zip %>%
+  left_join(st_set_geometry(affect_area, NULL), by = c("ZCTA5CE10", "city", "area", "latitude", "longitude")) %>%
+  mutate(Area = as.numeric(area) / 4046.86,
+         Affect_area = as.numeric(effect_area) / 4046.86, 
+         pct = Affect_area / Area * 100) %>%
+  select(-area, -effect_area)
+  
+
+```
+
+
+## web scrapping CA zip pop data
+
+This method is prohibit by the dataset distributer, read the user aggrement. Keep in mind
+
+
+## join zip pop and zip shapefile
+
+```{r}
+cali_comp <- cali_zip %>%
+  left_join(zip_cali, by = c("ZCTA5CE10" = "zip"))
+
+cali_df <- st_set_geometry(cali_comp, NULL) %>%
+  mutate(affect = ifelse(is.na(Affect_area), "No", "Yes"),
+         Affect_area = ifelse(is.na(Affect_area), "None Affected", round(Affect_area, 2)),
+         pct = ifelse(is.na(pct), "None Affect", round(pct, 2)))
+
+# write_sf(cali_comp, "/Users/yifeiliu/Documents/R/data/EDA/Blog_draft/pge/cali_comp.gpkg")
+# write_csv(cali_df, "/Users/yifeiliu/Documents/R/data/EDA/Blog_draft/pge/cali_comp.csv")
+
+
+
+```
+
+make a "ugly" static chart
+
+```{r}
 ggplot() +
-  geom_sf(data = cali_pop, aes(fill = estimate / 1000000), color = "grey90") +
-  geom_sf(data = cali_non, fill = "black", color = NA) +
-  geom_sf(data = cali, fill = "black", color = NA) +
+  geom_sf(data = cali_comp, aes(fill = pop / 1000), color = "grey90") +
+  geom_sf(data = pge, fill = "black", color = NA) +
   scale_fill_carto_c(palette = "PinkYl") +
   theme_void() +
-  labs(fill = "Population(M)",
+  labs(fill = "Population(K)",
        title = "PG&E shut off power in California",
        subtitle = "Black area: Area have been turned off power by PG&E due to safety reason | Color palette: indicate population density",
        caption = "Data Source: PG&E | Graphic: Yifei Liu") +
@@ -54,6 +136,51 @@ ggplot() +
         plot.title = element_text(face = "bold", hjust = 0.5, size = 26),
         plot.subtitle = element_text(face = "italic", hjust = 0.5, size = 12),
         plot.caption = element_text(hjust = 0))
-
 ```
+
+
+write small files, easy for flexdashboard to process
+
+## Interactive-ish map
+
+```{r}
+pal <- colorNumeric(palette = rcartocolor::carto_pal(7, "PinkYl") , NULL)
+
+labs <- lapply(seq(nrow(cali_df)), function(i) {
+  paste0('<p>', "City: ",cali_df[i, "city"],'<p></p>',
+         "Zip Code: ",cali_df[i, "ZCTA5CE10"],'<p></p>',
+         "Population: ",cali_df[i, "pop"], '<p></p>',
+         "Affect or not: ", cali_df[i, "affect"], '<p></p>',
+         "Affect Area: ", cali_df[i, "Affect_area"], " Acre",'<p></p>',
+         "% of Area Affected: ", cali_df[i, "pct"])
+})
+
+leaflet(options = leafletOptions(dragging = F,
+                                 minZoom = 5)) %>%
+   addPolygons(data = pge, fillColor = "black", fillOpacity = 0.65, color = "black", 
+              weight = 1) %>%
+  addPolygons(data = cali_comp, stroke = FALSE, smoothFactor = 0.3, fillOpacity = 0.7, color = "#03F", 
+              fillColor = ~pal(pop),
+              label = lapply(labs, htmltools::HTML)) %>%
+  addProviderTiles("OpenStreetMap.BlackAndWhite") %>%
+  addResetMapButton()
+```
+
+
+
+## conclusion
+
+- Name file is really really really hard........
+- Google is God
+- Best way to learn is read book + real word practice
+
+
+
+
+
+
+
+
+
+
 

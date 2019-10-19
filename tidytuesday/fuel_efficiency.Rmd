@@ -1,0 +1,628 @@
+---
+title: 'TidyTuesday: Car fule efficiency'
+author: "Yifei Liu"
+date: "10/15/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+load pacakges and files
+
+```{r}
+library(tidyverse)
+library(hrbrthemes)
+library(ggthemes)
+library(ggeconodist)
+library(broom)
+library(splines)
+library(ggcorrplot)
+detach("package:dplyr", unload = TRUE)
+library(dplyr)
+library(gganimate)
+library(ggeconodist)
+library(showtext)
+library(waffle)
+theme_set(theme_minimal())
+font_add_google("Lato", regular.wt = 300, bold.wt = 700)
+
+```
+
+```{r}
+big_epa_cars <- read_csv("https://github.com/rfordatascience/tidytuesday/blob/master/data/2019/2019-10-15/big_epa_cars.csv?raw=true") %>%
+  mutate(uses_electricity = ifelse(highwayE > 0, "Electric Vehicles", "Fossil Fuel Vehicles"))
+
+
+```
+
+# David Robinson Analysis
+
+```{r}
+
+# rearrange column by alphabetically
+cars_alpha <- big_epa_cars %>%
+  select(sort(colnames(big_epa_cars))) 
+
+cars_alpha %>%
+  count(atvType, sort = T)
+
+```
+
+
+
+```{r}
+
+big_epa_cars %>%
+  ggplot(aes(highway08, city08)) +
+  geom_point(alpha = 0.3) +
+  geom_abline(color = "red") +
+  expand_limits(x = 0, y = 0) +
+  facet_wrap(~ uses_electricity, scales = "free") +
+  labs(x = "Higway MPG",
+       y = "City MPG",
+       title = "How does fuel efficiency differ between city + highway") +
+  theme_fivethirtyeight()
+  
+
+```
+
+
+```{r}
+
+big_epa_cars %>% 
+  select(city08, highway08, make, model, cylinders, displ, drive, engId, eng_dscr)
+
+```
+
+```{r}
+
+big_epa_cars %>%
+  filter(cityE == 0) %>%
+  mutate(VClass = fct_lump(VClass, 8),
+         VClass = fct_reorder(VClass, city08)) %>%
+  ggplot(aes(VClass, city08)) +
+  geom_boxplot() +
+  coord_flip()
+
+big_epa_cars %>%
+  filter(cityE == 0) %>%
+  mutate(drive = fct_reorder(drive, city08)) %>%
+  ggplot(aes(drive, city08)) +
+  geom_boxplot() +
+  coord_flip()
+
+big_epa_cars %>%
+  filter(cityE == 0) %>%
+  ggplot(aes(cylinders, city08, group = cylinders)) +
+  geom_boxplot() 
+
+big_epa_cars %>%
+  filter(cityE == 0) %>%
+  ggplot(aes(displ, city08, group = displ)) +
+  geom_point()+
+  expand_limits(x = 0, y = 0)
+
+
+
+```
+
+
+## Goal: predict city fuel efficiency for single-fuel, non-electric efficiency cars
+
+```{r}
+
+# Cross validation holdout se
+non_electric_cars <- big_epa_cars %>%
+  filter(cityA08 == 0, cityE == 0) %>%
+  sample_frac(1)
+
+training_set <- non_electric_cars %>%
+  filter(row_number() %% 5 != 0)
+
+
+```
+
+
+
+```{r}
+training_set %>%
+  ggplot(aes(displ, city08)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+
+# simple linear regression not work very work very well, we can clear see trend in residuals
+
+lm(city08 ~ displ, data = training_set) %>%
+  augment(data = training_set) %>%
+  ggplot(aes(displ, .resid)) +
+  geom_point() 
+
+# add Natural Cubic splines to fit linear regression model, see what happen.
+
+augmented_data <- lm(city08 ~ ns(displ, 2), data = training_set) %>%
+  augment(data = training_set) 
+
+# what model look like
+
+lm(city08 ~ ns(displ, 2), data = training_set) %>% tidy()
+
+augmented_data %>%
+  ggplot(aes(displ, city08)) +
+  geom_point() +
+  geom_line(aes(y = .fitted), color = "red", size = 2)
+
+
+models <- tibble(df = 1:6) %>%
+  mutate(lm_model = map(df, ~ lm(city08 ~ ns(displ, df = .), data = training_set)))
+
+augmented_unnested <- models %>%
+  mutate(augmented = map(lm_model, augment, data = training_set)) %>%
+  unnest(augmented) 
+
+augmented_unnested %>%
+  ggplot(aes(displ, city08)) +
+  geom_point(data = training_set) +
+  geom_line(aes(y = .fitted, color = factor(df)), size = 2) +
+  labs(x = "Engine volumn(L)",
+       y = "City MPG",
+       color = "# of degrees of freedom") +
+  expand_limits(x = 0, y = 0) +
+  theme(legend.position = "bottom")
+
+augmented_unnested %>%
+  ggplot(aes(displ, .resid)) +
+  geom_point() +
+  facet_wrap(~ df) # base on the residuals chart, we don't find the model improve that much. 
+
+# contrary to augment which give you estimate parameter of models, glance give you models' goodness of fitness
+glanced_models <- models  %>%
+  rename(spline_df = df) %>%
+  mutate(glanced = map(lm_model, glance, data = training_set)) %>%
+  unnest(glanced)
+
+glanced_models %>%
+  ggplot(aes(spline_df, adj.r.squared)) +
+  geom_line() # the chart show add degree of freedom increase r values, but plateau around 4
+
+```
+
+
+
+```{r}
+
+lm(city08 ~ ns(displ, 4) + ns(cylinders, 3), data = training_set) %>%
+  anova() %>%
+  tidy() %>%
+  mutate(pct_variation = sumsq / sum(sumsq)) # due to high correlation between cylinders and displ
+
+```
+
+
+
+```{r}
+
+efficiency_time <- training_set %>%
+  mutate(VClass = fct_lump(VClass, 6),
+         guzzler = guzzler %in% c("G", "T")) %>%
+  group_by(year = 2 * floor(year / 2), VClass) %>%
+  summarize(avg_efficiency = mean(city08, na.rm = T),
+            avg_cyl = mean(cylinders, na.rm = T)) %>%
+  summarize_at(vars(city08, cylinders, displ, guzzler), mean)
+
+efficiency_time %>%
+  ggplot(aes(year, avg_efficiency, color = VClass)) +
+  geom_line() +
+  expand_limits(y = 0)  
+# we can see midsize and large size cars efficiency increase the most
+
+efficiency_time %>%
+  ggplot(aes(year, avg_cyl, color = VClass)) +
+  geom_line() +
+  expand_limits(y = 0)
+# we can see large size cars cylinders number drop
+  
+```
+
+
+# My own analysis /Vis
+
+## Car CO2 emission trend
+
+see how co2 emission cross different size vehicles change over past two decades
+```{r}
+
+dim(big_epa_cars)
+
+```
+
+we have 84 varaibels and 41804 observations
+
+```{r}
+skimr::skim(big_epa_cars) 
+```
+
+most numeric variable are complete, over 50% of character variables are also complete. But most logical variables are missing.
+
+```{r}
+big_epa_cars %>%
+  filter(uses_electricity == "Fossil Fuel Vehicles") %>%
+  count(fuelType, fuelType1, fuelType2, sort = T) # we don't have fueltype2
+
+big_epa_cars %>%
+  filter(uses_electricity == "Fossil Fuel Vehicles") %>%
+  ggplot() + 
+  geom_point(aes(x = co2, y = co2TailpipeGpm))
+
+```
+
+we still have a lot of co2 data = -1 and 0 , = 0 case is the car use electricity. = -1, Need further inspection. We have about 9490 point  = -1, about 23% of entire non-ele dataset
+
+```{r}
+
+big_epa_cars %>%
+  filter(uses_electricity == "Fossil Fuel Vehicles") %>%
+  count(co2 < 0)
+
+big_epa_cars %>%
+  filter(uses_electricity == "Fossil Fuel Vehicles") %>%
+  count(co2TailpipeGpm < 0)
+
+
+
+```
+
+now a lot of co2 values is less than zero but another co2 measuremnet co2TailpipeGpm is more complete so we use these variables for co2 benchmark
+
+
+check emission levels
+
+```{r}
+
+car_emission <- big_epa_cars %>%
+  filter(uses_electricity == "Fossil Fuel Vehicles")
+
+car_emission %>%
+  group_by(year) %>%
+  summarize(co2_median = median(co2TailpipeGpm, na.rm = T)) %>%
+  ggplot(aes(year, co2_median)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "loess", color = "#589bb7", fill = "#589bb7")  +
+  labs(x = "", y  = "CO2 Emission level (grams/miles)",
+       title = "Average car CO2 emission",
+       caption = "Source: EPA") +
+  theme_ipsum_rc(grid = "Y")
+  
+
+
+```
+
+see what type of cars emission change during last 20+ years
+
+```{r}
+
+name_clean <- c("\\ -.*", " Cars", " Vehicle", " Trucks")
+
+car_emission <- car_emission %>%
+  mutate(VClass = fct_lump(VClass, 6),
+         VClass = str_remove_all(VClass, paste(name_clean, collapse = "|")),
+         year = 2 * floor(year / 2)) %>%
+  group_by(year, VClass) %>%
+  summarize(co2_mean = mean(co2TailpipeGpm, na.rm = T))
+
+p <- car_emission %>%
+  ggplot(aes(year, co2_mean, group = VClass, color = VClass)) +
+  geom_line() +
+  # scale_color_viridis_d() +
+  geom_segment(aes(xend = 2021.2, yend = co2_mean), linetype = 2, colour = 'grey') +
+  geom_point(size = 2) +
+  geom_text(aes(x = 2021.8, label = VClass, size = 8), hjust = 0) +
+  labs(title = "Diferent size vehicles emission level",
+       subtitle = "2 year average emisson", 
+       y = "CO2 (grams / miles)", x = "", caption = "Source: EPA | Grphic: Yifei Liu") +
+  theme_ipsum_rc(grid = "Y") +
+  theme(legend.position = "none",
+        plot.margin = margin(5.5, 160, 5.5, 5.5),
+        plot.title = element_text(hjust = 0.5, size = 40),
+        plot.subtitle = element_text(size = 20),
+        axis.title.y = element_text(size = 20),
+        plot.caption = element_text(size = 20)) 
+
+p + transition_reveal(year) + 
+  coord_cartesian(clip = 'off') 
+
+animate(p + transition_reveal(year) + 
+  coord_cartesian(clip = 'off') , height = 1000, width =2000)
+
+# anim_save("vclass_emission.gif")
+
+
+```
+
+gift show how emission cross most weight class vehicles decrease. we can see cross different size of vehicles, co2 emission goes down. 
+
+## Most green car brand
+
+Use brand car co2 emission average data, see which brand cars are most green, 
+
+first only use top 10 brand in terms of number of cars on EPA list. 
+
+```{r}
+top_emission <- car_emission %>% 
+  select(year, make, co2TailpipeGpm) %>%
+  group_by(year, make) %>%
+  summarize(co2_mean = round(mean(co2TailpipeGpm, na.rm = T), 1),
+            total = sum(co2TailpipeGpm, na.rm = T),
+            n = n(),
+            clean_level = round(1 / co2_mean * 1000000)) %>%
+  group_by(year) %>%
+  top_n(10, wt = total) %>%
+  arrange(desc(clean_level)) %>%
+  mutate(ordering = as.double(rev(seq(10:1))) * 1.0,
+         make = str_remove(make, "-.*")) # short car companies names
+```
+
+
+```{r}
+
+car_own1 <- read_table("BMW Group owns BMW, Mini, and Rolls-Royce.
+Daimler AG owns Mercedes-Benz and Smart.
+Fiat Chrysler Automobiles owns Alfa Romeo, Chrysler, Dodge, Fiat, Jeep, Maserati, and Ram.
+Ford Motor Co. owns Ford and Lincoln.
+General Motors owns Buick, Cadillac, Chevrolet, and GMC.
+Honda Motor Co. owns Acura and Honda.
+Hyundai Motor Group owns Genesis, Hyundai, and Kia.
+Mazda Motor Corp. owns Mazda.
+Renault-Nissan-Mitsubishi Alliance owns Infiniti, Mitsubishi, and Nissan.
+Subaru Corp. owns Subaru.
+Tata Motors owns Jaguar and Land Rover.
+Tesla owns Tesla.
+Toyota Motor Corp. owns Lexus and Toyota. And it has a stake in Subaru and Suzuki.
+Volkswagen Group owns Audi, Bentley, Bugatti, Lamborghini, Porsche, and Volkswagen.
+Zhejiang Geely Holding Group (ZGH) owns Lotus, Polestar, and Volvo.", col_names = F) 
+
+car_own2 <- read_table("Acura: Honda Motor Company
+Alfa Romeo: Fiat Chrysler Automobiles
+Audi: Volkswagen Group
+BMW: BMW Group
+Bentley: Volkswagen Group
+Buick: General Motors
+Cadillac: General Motors
+Chevrolet: General Motors
+Chrysler: Fiat Chrysler Automobiles
+Dodge: Fiat Chrysler Automobiles
+Fiat: Fiat Chrysler Automobiles
+Ford: Ford Motor Co.
+GMC: General Motors
+Genesis: Hyundai Motor Group
+Honda: Honda Motor Co.
+Hyundai: Hyundai Motor Group
+Infiniti: Renault-Nissan-Mitsubishi Alliance
+Jaguar: Tata Motors
+Jeep: Fiat Chrysler Automobiles
+Kia: Hyundai Motor Group
+Land Rover: Tata Motors
+Lexus: Toyota Motor Corp.
+Lincoln: Ford Motor Co.
+Lotus: Zhejiang Geely Holding Group 
+Maserati: Fiat Chrysler Automobiles
+Mazda: Mazda Motor Corp.
+Mercedes-Benz: Daimler AG
+Mercury*: Ford Motor Co.
+Mini: BMW Group
+Mitsubishi: Renault-Nissan-Mitsubishi Alliance
+Nissan: Renault-Nissan-Mitsubishi Alliance
+Polestar: Zhejiang Geely Holding Group 
+Pontiac*: General Motors
+Porsche: Volkswagen Group
+Ram: Fiat Chrysler Automobiles
+Rolls-Royce: BMW Group
+Saab: brand owned by Saab AB; assets owned by National Electric Vehicle Sweden
+Saturn*: General Motors
+Scion*: Toyota Motor Corp.
+Smart: Daimler AG
+Subaru: Subaru Corp.
+Suzuki*: Suzuki Motor Corp. Owns a small stake in Toyota.
+Tesla: Tesla Inc.
+Toyota: Toyota Motor Corp.
+Volkswagen: Volkswagen Group
+Volvo: Zhejiang Geely Holding Group", col_names = F)
+
+top_car_make <- top_emission %>% ungroup() %>% count(make)
+
+make_owner1 <- car_own1 %>%
+  as_tibble() %>%
+  separate(X1, into = c("Own", "Brand"), sep = " owns ") %>% 
+  separate_rows(Brand, sep = ",|and|And") %>%
+  filter(str_detect(Brand, paste0(top_car_make$make, collapse = "|"))) %>% 
+  mutate(Brand = str_match(Brand, paste0(top_car_make$make, collapse = "|"))) %>%
+  filter(.$Brand != "Volvo")
+
+make_owner1 <- data.frame(Own = make_owner1$Own,
+               make = make_owner1$Brand[,1]) %>%
+  add_row(Own = make_owner1$Own,
+         make = make_owner1$Own)
+
+make_owner2 <- car_own2 %>%
+  as_tibble() %>%
+  separate(X1, into = c("make", "Own"), sep = ": ") %>%
+  mutate(Own = case_when(make == "Saab" ~ "Saab AB",
+                         make == "Suzuki*" ~ "Suzuki Motor Corp",
+                         T ~ Own)) %>%
+  select(Own, make)
+
+make_owner <- make_owner1 %>%
+  full_join(make_owner2, by = c("make", "Own")) %>%
+  mutate(make = str_remove(make, "\\*"))
+ 
+
+top_emission <- top_emission %>%
+  left_join(make_owner, by = "make") %>%
+  mutate(Own = case_when(make == "Oldsmobile" ~ "General Motors",
+                         make == "Plymouth" ~ "Fiat Chrysler Automobiles",
+                         make == "Eagle" ~ "Fiat Chrysler Automobiles",
+                         T ~ Own))
+
+```
+
+
+
+```{r}
+p <- top_emission %>%
+  #filter(year %% 2 == 0) %>%
+  # filter(year == 2020) %>%
+  ggplot(aes(ordering, group = make)) +
+  geom_tile(aes(y = clean_level / 2,
+                height = clean_level,
+                width = 0.9,
+                fill = Own), alpha = 0.9) +
+  geom_text(aes(y = clean_level * 0.95, label = make), size = 5) +
+  geom_text(aes(y = clean_level * 1.05, label = clean_level), size = 5) +
+  geom_text(aes(x = 1, y = 2700, label = paste0(year)), size = 15, color = "gray45") +
+  coord_cartesian(clip = "off", expand = F) +
+  scale_fill_viridis_d() +
+  coord_flip() +
+  labs(title = "Greenest Car Manufactures Company",
+       subtitle = "Top 10 Car manufactures in terms of # of cars EPA had tested | 1 ton of CO2 how many miles can you drive",
+       x = "", y = "Clean level (unit: miles / ton (CO2))",
+       caption = "Source: EPA | Graphic: Yifei Liu")  +
+  theme(legend.position = "none",
+        text = element_text(family = 'Lato'),
+        rect = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.5, size = 32),
+        plot.subtitle = element_text(size = 24),
+        plot.caption = element_text(size = 16),
+        axis.ticks = element_blank(),
+        axis.text.x = element_text(size = 16),
+        axis.title.x = element_text(size = 24),
+        axis.text.y = element_blank(),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_line(color = "grey75"),
+        panel.grid.minor.x = element_line(color = "grey75"))
+
+animate(p +
+  transition_states(year) +
+  ease_aes('cubic-in-out') , height = 1000, width = 2000)
+
+anim_save("greenest_companies.gif")
+
+
+```
+
+
+
+
+Which brand car most economic efficient. 
+
+```{r}
+
+big_epa_cars %>%
+  group_by(year, make, electr)
+
+```
+
+
+
+Does each Car maker make oil efficient car or not efficient cars?
+
+```{r}
+
+epa_price <- big_epa_cars %>%
+  select(year, make, youSaveSpend) %>%
+  left_join(make_owner, by = "make") %>%
+  mutate(Own = case_when(make == "Oldsmobile" ~ "General Motors",
+                         make == "Plymouth" ~ "Fiat Chrysler Automobiles",
+                         make == "Eagle" ~ "Fiat Chrysler Automobiles",
+                         make == "Isuzu" ~ "General Motors",
+                         make == "MINI" ~ "BMW Group",
+                         make == "Geo" ~ "General Motors",
+                         make == "Lamborghini" ~ "Volkswagen Group",
+                         T ~ Own)) %>%
+  filter(!is.na(Own)) %>%
+  mutate(Own = fct_lump(Own, 19)) %>%
+  group_by(year, Own) %>%
+  summarize(save_median = median(youSaveSpend)) 
+
+epa_price %>%
+  ggplot(aes(year, Own, fill = save_median)) +
+  geom_tile() +
+  scale_fill_carto_c(palette = "TealRose", direction = -1) +
+  labs(title = "Which car cost less money down the road",
+       fill = "Meidan save",
+       x = "", y = "") +
+  guides(fill = guide_colourbar(barheight = 0.3, barwidth = 20, direction = "horizontal", ticks = F)) +
+  theme(axis.text.x = element_text(hjust = 1),
+        plot.title = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(face = "italic", size = 8),
+        axis.ticks = element_blank(),
+        axis.title.y = element_text(hjust = 1, size = 7),
+        panel.grid = element_blank(),
+        legend.position = "bottom")
+
+ggsave("car_save.png", width = 20, height = 15, units = "cm") 
+
+```
+
+
+How many car models have been tested by EDA
+
+```{r}
+
+e_car <- big_epa_cars %>%
+  mutate(year = floor((year + 2) / 6) * 6,
+         year = case_when(year == 2022 ~ 2016,
+                          T ~ year),
+         year = case_when(year == 1986 ~ "1984-1989",
+                          year == 1992 ~ "1990-1995",
+                          year == 1998 ~ "1996-2001",
+                          year == 2004 ~ "2002-2007",
+                          year == 2010 ~ "2008-2013",
+                          year == 2016 ~ "2014-2020"),
+         uses_electricity = case_when(phevHwy > 0 ~ "Hybrid Vehicles",
+                                      T ~ uses_electricity),
+         uses_electricity = fct_relevel(uses_electricity, c("Fossil Fuel Vehicles", "Electric Vehicles","Hybrid Vehicles"))) %>%
+  select(year, uses_electricity) %>%
+  group_by(year, uses_electricity) %>%
+  count() %>%
+  mutate(n = round(n / 100))
+  
+  
+e_car %>%
+  ggplot(aes(fill = uses_electricity, values = n)) +
+  geom_waffle(color = "white", size = 0.25, nrow = 10, flip = T) +
+  facet_wrap(~ year, nrow = 1, strip.position = "bottom") +
+  scale_x_discrete() +
+  scale_y_continuous(labels = function(x) x * 1000,
+                     expand = c(0, 0)) +
+  coord_equal() +
+  scale_fill_tableau(name = NULL) +
+  labs(title = "Beginning of a new area",
+       subtitle = "# of vechicle models tested by EPA",
+       caption = "Source: EPA | Graphic: Yifei Liu") +
+  theme_econodist() +
+  theme(panel.grid = element_blank(),
+        axis.ticks.y = element_line(),
+        plot.caption = element_text(hjust = 0),
+        legend.position = "bottom") +
+  guides(fill = guide_legend(reverse = T)) 
+
+# ggsave("e_car.png", width = 20, height = 8, units = "cm")
+  
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -18,6 +18,7 @@ detach("package:dplyr", unload=TRUE)
 library(dplyr)
 library(ggthemes)
 library(scales)
+library(awtools)
 library(gapminder)
 theme_set(theme_minimal())
 
@@ -69,7 +70,7 @@ treasury_yield_df %>%
   geom_point(show.legend = F, size = 1) +
   geom_line(show.legend = F) +
   a_plex_theme() +
-  a_main_fill() +
+  a_theme() +
   scale_y_continuous(labels = percent_format()) +
   scale_x_continuous(breaks = c(1,5, 8, 13, 16, 20, 25, 31, 40, 50, 60),
                      labels = names(treasury_yield)[-1][-2]) +
@@ -89,7 +90,7 @@ p <- treasury_yield_df %>%
   ease_aes('linear') +
   shadow_mark(colour = "grey70", alpha = 0.3) +
   a_plex_theme() +
-  a_main_fill() +
+  a_theme() +
   labs(title = 'Federal Reserve Rate: {frame_time}',
        x = "", y = "",
        subtitle = "Monthly US Treasury yield curve since 1990",
