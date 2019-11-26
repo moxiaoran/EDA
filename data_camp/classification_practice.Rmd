@@ -1,0 +1,223 @@
+---
+title: 'Surpervised Learning in R: Classification Practice'
+author: "Yifei Liu"
+date: "11/6/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# load pacakges
+library(caTools)
+library(tidyverse)
+library(broom)
+library(dplyr)
+library(ggplot2)
+library(rsample)
+library(corrplot)
+library(hrbrthemes)
+library(caret)
+library(naivebayes)
+library(class)
+detach("package:dplyr", unload = TRUE)
+library(dplyr)
+
+# set ggplot themes
+theme_set(theme_minimal())
+```
+
+
+## KNN
+
+Objective:
+1. Practice KNN model
+2. Figure out how to cross validate a KNN model
+
+Steps:
+1. EDA the dataset
+2. Split the dataset 
+3. fit cv dataset to different k values knn model, see on average which model perform the best
+4. use best model to fit test dataset and get result
+
+```{r}
+glass <- read.csv("https://archive.ics.uci.edu/ml/machine-learning-databases/glass/glass.data",
+                      col.names=c("RI","Na","Mg","Al","Si","K","Ca","Ba","Fe","Type"))
+
+```
+
+### Standardize the Data
+
+Its ideal to standaridize features in data, especially with KNN algorithm, 
+
+```{r}
+
+standard_features <- scale(glass[,1:9])
+
+#Join the standardized data with the target column
+glass_data <- cbind(standard_features,glass[10])
+#Check if there are any missing values to impute. 
+anyNA(glass_data)
+
+head(glass_data)
+```
+
+### Data Vis
+
+```{r}
+
+corrplot(cor(glass_data))
+
+glass_data %>%
+  gather(key, value, -Type) %>%
+  ggplot(aes(value)) +
+  geom_histogram(bins = 50) +
+  facet_wrap(~ key) +
+  labs(title = "distribution of attributes",
+       x = "", y = "")
+
+```
+
+### Test and train data split
+
+```{r}
+set.seed(2018)
+
+sample <- initial_split(glass_data, prop = 0.75)
+
+training_data <- training(sample)
+testing_data <- testing(sample)
+
+cv_split <- vfold_cv(training_data, v = 12)
+
+```
+
+
+mapping train & validate
+
+```{r}
+
+cv_data <- cv_split %>%
+  mutate(train = map(splits, ~training(.x)),
+         validate = map(splits, ~testing(.x)))
+
+
+knn_validate <- function(data, k) {
+  result <- NULL
+  for (i in 1:nrow(data)) {
+    result[i] <- mean(knn(as.data.frame(data$train[i])[1:9], as.data.frame(data$validate[i])[1:9], as.data.frame(data$train[i])[,10 ,drop = T], k = k) == as.data.frame(data$validate[i])[,10 ,drop = T])
+  }
+  print(mean(result, na.rm = T))
+}
+
+result_accuracy <- NULL
+
+for(k in c(1:10)) {
+  set.seed(2019) 
+  result_accuracy[k] <- knn_validate(cv_data, k)
+}
+
+accuracy <- tibble(k = 1:10,
+                   accuracy = result_accuracy)
+
+accuracy %>%
+  ggplot(aes(k, accuracy)) +
+  geom_line() +
+  geom_point() +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(title = "Training model accuacy rate",
+       x = "K", y = "Accuracy") +
+  theme_ipsum_rc()
+
+```
+
+Base on this test result, we can decide to choose k = 1 as final parameters
+
+Testing the model
+
+```{r}
+
+knn_result <- knn(training_data[1:9], testing_data[1:9], training_data$Type, k = 1)
+knn_accuracy <- mean(knn_result == testing_data$Type)
+
+knn_accuracy
+
+caret::confusionMatrix(knn_result, factor(testing_data$Type, levels = 1:7))
+
+
+```
+
+The overall accuracy rate is *`r scales::percent(knn_accuracy)`*
+
+Reference: [K Nearest Neighbors (KNN)](https://rpubs.com/sukeshpabba/KNN)
+
+
+
+## Naive bayes
+
+### Example data
+```{r}
+# Simulate example data
+n <- 100
+set.seed(1)
+data <- data.frame(class = sample(c("classA", "classB"), n, TRUE),
+                   bern = sample(LETTERS[1:2], n, TRUE),
+                   cat  = sample(letters[1:3], n, TRUE),
+                   logical = sample(c(TRUE,FALSE), n, TRUE),
+                   norm = rnorm(n),
+                   count = rpois(n, lambda = c(5,15)))
+train <- data[1:95, ]
+test <- data[96:100, -1]
+```
+
+### Formula interface
+
+```{r}
+nb <- naive_bayes(class ~., data = train)
+
+summary(nb)
+
+# Classification
+predict(nb, test, type = "class") 
+nb %class% test
+
+# Posterior probability
+predict(nb, test, type = "prob")
+nb %prob% test
+
+# helper functions
+tables(nb, 1)
+
+get_cond_dist(nb)
+
+```
+
+
+Reference: [naivebayes](https://majkamichal.github.io/naivebayes/articles/naivebayes.html)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Logistic regression
+

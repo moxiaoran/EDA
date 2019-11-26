@@ -1,0 +1,44 @@
+---
+title: "Market Analysis"
+author: "Yifei Liu"
+date: "10/25/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(tidyquant)
+detach("package:dplyr", unload = TRUE)
+library(dplyr)
+```
+
+After the tax what, How did the companies use those money? Capital expanditure or Buyback stocks
+
+```{r}
+
+capex_bb <-  c("NASDAQOMX/DRB", "NASDAQOMX/CAPEXA")  %>%
+  tq_get(get = "quandl",
+         from = "2017-01-01") 
+
+capex_bb_bench <- capex_bb %>%
+  filter(trade.date > as.Date("2018-01-01")) %>%
+  group_by(symbol) %>%
+  tq_transmute(select = index.value,
+               mutate_fun = periodReturn,
+               period = "daily",
+               col_rename = "Ra") %>%
+  mutate(value = 1000 * cumprod(1 + Ra)) %>%
+  ungroup() %>%
+  mutate(symbol = ifelse(symbol == "NASDAQOMX/DRB", "buyback", "capex"))
+
+capex_bb_bench %>%
+  ggplot(aes(trade.date, value, color = symbol)) +
+  geom_line()
+
+```
+

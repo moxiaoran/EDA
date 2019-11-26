@@ -1,0 +1,137 @@
+---
+title: "Chess Probability"
+author: "Yifei Liu"
+date: "12/5/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Riddler Express
+
+Say one of the players is better than his opponent to the degree that he wins 20 percent of all games, loses 15 percent of games and that 65 percent of games are drawn. Wins at this match are worth 1 point, draws a half-point for each player, and losses 0 points. In a 12-game match, the first player to 6.5 points wins.
+
+What are the chances the better player wins a 12-game match? How many games would a match have to be in order to give the better player a 75 chance of winning the match outright? A 90 percent chance? A 99 percent chance?
+
+```{r}
+library(tidyverse)
+
+scores <- crossing(trail = 1:1e6,
+         game = 1:12) %>%
+  dplyr::mutate(result = sample(c(1,0,.5), 
+                                n(),
+                                replace = T, 
+                                prob = c(.2, .15, .65))) %>%
+  group_by(trail) %>%
+  dplyr::summarize(score = sum(result))
+
+
+scores %>%
+  ggplot(aes(score)) +
+  geom_histogram(binwidth = .25) +
+  geom_vline(color = "red", xintercept = 6.5)
+
+
+scores %>%
+  dplyr::summarise(mean(score >= 6.5))
+
+
+```
+
+
+
+
+```{r}
+ngames_sim <- crossing(trail = 1:50000,
+                   ngames = round(12 * 2 ^ seq(0, 7, .5))) %>%
+  unnest(game = map(ngames, seq_len)) %>%
+  dplyr::mutate(result = sample(c(1,0,.5), 
+                                n(),
+                                replace = T, 
+                                prob = c(.2, .15, .65))) %>%
+  group_by(ngames, trail) %>%
+  dplyr::summarize(score = sum(result))%>%
+  dplyr::summarize(win = mean(score > ngames / 2))
+
+
+ngames_sim %>%
+  ggplot(aes(ngames, win)) +
+  geom_line() +
+  geom_point() +
+  scale_x_log10() +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(x = "# of games",
+       y = "probability better players win")
+  
+
+# 82, 248 and 773.  
+exp(approx(ngames_sim$win ,log(ngames_sim$ngames), xout = .75)$y)
+exp(approx(ngames_sim$win ,log(ngames_sim$ngames), xout = .90)$y)
+exp(approx(ngames_sim$win ,log(ngames_sim$ngames), xout = .99)$y)
+
+```
+
+
+## Riddler Classic
+
+```{r}
+simulate_game <- function(N){
+  
+  m <- matrix(0L, nrow = N, ncol = N)
+  
+  rounds <- 0L
+  balls <- 0L
+  
+  while(any(colSums(m) == 0)) {
+    rounds <- rounds+ 1L
+    # while any cip is still empty
+    # Throwing Phase
+    while(any(colSums(m) == 0))  {
+      balls <- balls + 1L
+      ball <- sample.int(N, 1)
+      cup <- sample.int(N, 1)
+    
+      m[ball, cup] <- m[ball, cup] + 1L
+    }
+    # empty the cups
+    m[lower.tri(m)] <- 0L
+    m[upper.tri(m)] <- 0L
+  }
+  list(rounds, balls)
+}
+
+
+
+games <- crossing(N = seq(3, 25, 3),
+                   game = 1:1000) %>%
+  dplyr::mutate(result = map(N, simulate_game),
+                rounds = map_int(result, 1),
+                balls = map_int(result, 2))
+
+games %>%
+  group_by(N) %>%
+  dplyr::summarize(rounds = mean(rounds),
+            balls = mean(balls)) %>%
+  ggplot() +
+  geom_line(aes(N, balls))
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

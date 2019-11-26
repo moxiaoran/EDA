@@ -83,9 +83,10 @@ race <- get_decennial(geography = "tract", variables = racevars,
                       state = "DC", county = "District of Columbia", 
                       geometry = TRUE,
                       summary_var = "P001001") %>%
-  mutate(percent = 100 * (value / summary_value)) %>%
-  st_transform(26918)
+  mutate(percent = 100 * (value / summary_value))
 
+
+  st_transform(26918) +
   labs(title = "Net migration per 1000 residents by county",
        subtitle = "US Census Bureau 2017 Population Estimates",
        fill = "Rate",

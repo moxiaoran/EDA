@@ -1,0 +1,32 @@
+---
+title: "ggmap"
+author: "Yifei Liu"
+date: "11/11/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library("ggmap")
+#  Loading required package: ggplot2
+#  Registered S3 methods overwritten by 'ggplot2':
+#    method         from 
+#    [.quosures     rlang
+#    c.quosures     rlang
+#    print.quosures rlang
+#  Google's Terms of Service: https://cloud.google.com/maps-platform/terms/.
+#  Please cite ggmap if you use it! See citation("ggmap") for details.
+
+```
+
+```{r}
+us <- c(left = -125, bottom = 25.75, right = -67, top = 49)
+get_stamenmap(us, zoom = 5, maptype = "toner-lite") %>% ggmap() 
+#  Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under ODbL.
+```
+
+Reference: [ggmap](https://github.com/dkahle/ggmap)
+

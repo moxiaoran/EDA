@@ -1,0 +1,62 @@
+---
+title: "ggraph walkthrough"
+author: "Yifei Liu"
+date: "10/27/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# ggraph
+
+## Edges
+
+```{r}
+
+library(ggraph)
+library(tidygraph)
+library(purrr)
+library(rlang)
+library(ggplot2)
+library(ggiraph)
+
+```
+
+
+
+# igraph
+
+
+
+
+
+
+
+Reference: [Network analysis with R and igraph: NetSci X Tutorial](https://kateto.net/networks-r-igraph)
+
+
+
+# visNetwork
+
+interactive visualization
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

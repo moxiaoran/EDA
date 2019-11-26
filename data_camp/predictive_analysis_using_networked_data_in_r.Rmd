@@ -1,0 +1,513 @@
+---
+title: "Predictive Analytics using Networked Data in R"
+author: "Yifei Liu"
+date: "11/9/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+load pacakges and data
+```{r}
+library(tidyverse)
+library(igraph)
+library(ggraph)
+library(pROC)
+library(visNetwork)
+theme_set(theme_minimal())
+
+detach("package:dplyr", unload = TRUE)
+library(dplyr)
+
+load("/Users/yifeiliu/Documents/R/data/EDA/datacamp/network/StudentEdgelist.RData")
+load("/Users/yifeiliu/Documents/R/data/EDA/datacamp/network/StudentCustomers.RData")
+load("/Users/yifeiliu/Documents/R/data/EDA/datacamp/network/StudentNetwork.RData")
+
+```
+
+
+```{r}
+
+vertex_attr(g1)
+
+sapply(ego(g1,1,V(g1),mode = 'all',mindist = 1), function(v) sum(V(g1)[v]$networkChurn == "Yes"))
+
+```
+
+
+
+## Introduction, networks and labelled networks
+
+### Introduction
+
+### Most likely to churn
+Below you see a network with three type of nodes:
+
+- Non-churners (white)
+- Churners (red)
+- Unknown label (blue)
+
+Under the assumption that churn is a social phenomenon, which of the blue nodes is most likely to churn? 
+
+![](https://assets.datacamp.com/production/repositories/2073/datasets/752c77509d5ddb2dd3ea8b39118aad3a1eb84f68/Screen%20Shot%202019-08-29%20at%203.07.10%20PM.png)
+
+Answer: C is connected to the most churners, three in total.
+
+
+### Create a network from an edgelist
+
+In this exercise, you will create a network from an edgelist.
+
+You will create an igraph object from data stored in an edgelist using the function graph_from_data_frame(). The data is a social network of customers and each row of the edgeList dataframe represents an edge in the network. The edges in this network are undirected and have weight 1. This is indicated by the directed argument of the function, which is logical so the value FALSE means that the network is undirected.
+
+The igraph package has been loaded for you.
+
+
+```{r}
+
+head(edgeList)
+
+# Construct the igraph object
+network <- graph_from_data_frame(edgeList, directed = F)
+
+# View your igraph object
+network
+
+```
+
+
+### Labeled networks, Social influence
+
+### Labeling nodes
+
+In this exercise, you will label the nodes in the network. You are given a dataframe called customers with the same customer IDs as in the network. Each customer has an indication of whether they churned or not, given by 1 or 0 respectively. You will add the churn status to the nodes of the network and visualize it.
+
+Note that a network can have both node and edge attributes. The node attributes are represented by the function V() (for vertex) and the edge attributes by the function E().
+The node attributes of the churn network are V(network).
+
+```{r}
+
+# Inspect the customers dataframe
+head(customers)
+
+# Count the number of churners and non-churners
+table(customers$churn)
+
+# Add a node attribute called churn
+V(network)$churn <- customers$churn
+
+# Visualize the network
+plot(network, vertex.label = NA, edge.label = NA,
+    edge.color = 'black', vertex.size = 2)
+
+## use ggplot to vis the network
+
+ggraph(network, layout = "with_kk") +
+  geom_edge_link() +
+  geom_node_point(aes(color = factor(churn))) 
+  
+
+```
+
+### Coloring nodes
+
+In this exercise, you will color the nodes in the network depending on the churn status. The customers who have churned will be colored red and the non-churners will be colored white. Then you will visualize the network again.
+
+```{r}
+
+# Add a node attribute called color
+V(network)$color <- V(network)$churn
+
+# Change the color of churners to red and non-churners to white
+V(network)$color <- gsub("1", "red", V(network)$color) 
+V(network)$color <- gsub("0", "white", V(network)$color)
+
+# Plot the network
+plot(network, vertex.label = NA, edge.label = NA,
+    edge.color = "black", vertex.size = 2)
+
+
+```
+
+### Visualizing Churners
+
+In the previous exercises, you noticed that it can be difficult to visualize a large network. Now you will visualize only the churners in the network by conditioning on the churn attribute.
+
+- Create a new igraph object called churnerNetwork.
+  - Use the function induced_subgraph() to generate a subgraph of the already existing network.
+  - Select the nodes that have the node attribute churn equal to 1.
+- Visualize churnerNetwork using plot().
+
+
+```{r}
+
+# Create a subgroup with only churns
+churnerNetwork <- induced_subgraph(network,
+                                 v = V(network)[which(V(network)$churn == 1)])
+
+# plot the churner network
+plot(churnerNetwork, vertex.label = NA, vertex.size = 2)
+
+# ggplot the churner network
+ggraph(churnerNetwork, layout = "in_circle") +
+  geom_node_point(aes(color = color)) +
+  geom_edge_link(alpha = 0.5)
+
+```
+
+
+### Relational Neighbor Classifier
+
+In this exercise, you will apply a simple network based classifier called the relational neighbor classifier. It uses the class labels of neighboring nodes to compute a churn probability for each node in the network.
+For example, in the network below where red nodes denote churners and white nodes denote non-churners, the churn probability of the blue node is 0.4.
+
+
+![](https://assets.datacamp.com/production/repositories/2073/datasets/ae7dc5c4fda0009d30bb7090903127ebd6bbdbf2/RL1.jpg)
+
+You are given two vectors: ChurnNeighbors and NonChurnNeighbors with each customer's number of neighbors that have churned and not churned, respectively.
+
+
+
+```{r}
+
+# # Compute the churn probabilities
+ChurnNeighbors <- map_int(ego(network, 1, V(network), mindist = 1), function(v) sum(V(network)[v]$churn == 1))
+NonChurnNeighbors <- map_int(ego(network, 1, V(network), mindist = 1), function(v) sum(V(network)[v]$churn == 0))
+
+churnProb <- ChurnNeighbors / (ChurnNeighbors + NonChurnNeighbors)
+
+# Find who is most likely to churn
+mostLikelyChurners <- which(churnProb == max(churnProb))
+
+# Extract the IDs of the most likely churners
+customers$id[mostLikelyChurners]
+
+map_int(ego(network, 1, V(network), mindist = 1), function(v) sum(V(network)[v]$churn == 1))
+```
+
+Reference: [FAST way to sum up neighbors' attributes in a large graph in R](https://stackoverflow.com/questions/39172602/fast-way-to-sum-up-neighbors-attributes-in-a-large-graph-in-r)
+
+### Challenges
+
+### Challenges in Network learning
+Which statement is wrong about the challenges of social network based inference?
+
+
+- Splitting the data into training and test sets is not easy.
+
+- Inferences about entities might affect each other.
+
+- The data is independent and identically distributed.
+
+- The properties of connected nodes might be correlated.
+
+Answer: C is incorrect
+
+The data is not independent and identically distributed (iid) as the label of one node might influence the label of a related node and there is correlational behavior between nodes.
+
+### Probabilistic Relational Neighbor Classifier
+
+In this exercise, you will apply the probabilistic relational neighbor classifier to infer churn probabilities based on the prior churn probability of the other nodes.
+
+Instead of knowing the nodes' labels, suppose you know each node's probability of churn, as in the image below. In the image, C stands for churn and NC for non-churn. Then, as before, you can update the churn probability of the nodes by finding the average of the neighboring nodes' churn probabilities.
+
+![](https://assets.datacamp.com/production/repositories/2073/datasets/46e37bfad18a72bb4d6296b67dc5a0d2d6584edd/bRL2.jpg)
+
+Don't really understand
+```{r}
+# Find churn probability of the 44th customer
+churnProb[44]
+
+AdjacencyMatrix <- as_adjacency_matrix(network)
+neighbors <- ego_size(network)
+
+# Update the churn probabilties and the non-churn probabilities
+churnProb_updated <- as.vector((AdjacencyMatrix %*% churnProb) / neighbors)
+
+# Find updated churn probability of the 44th customer
+churnProb_updated[44]
+
+```
+
+
+applying the probabilistic relational neighbor classifier! The churn probabiltiy of the 44th customer decreased from 0.25 to 0.173
+
+### Collective Inferencing
+
+Collective inferencing is a procedure to simultaneously label nodes in interconnected data to reduce classification error.
+
+In this exercise you will perform collective inferencing and see the effect it has on the churn prediction using the AUC performance measure. AUC, or area under the ROC curve, is commonly used to assess the performance of classification techniques.
+
+- AUC = probability that a randomly chosen churner is ranked higher by the model than a randomly chosen non-churner
+- AUC = number between 0.5 and 1, where a higher number means a better model
+Does collective inferencing increase the AUC value?
+
+-Compute the AUC of the relational neighbor classifier by calling the auc function in the pROC package, using the actual churn labels customers$churn and the churnProb as the predicted value.
+- Write a for loop where you apply the probabilistic relational neighbor classifier ten times, and assign the - value again to the churnProb vector in each iteration.
+Compute the AUC again using the updated churnProb vector.
+
+```{r}
+
+# Compute the AUC
+auc(customers$churn, as.vector(churnProb))
+
+# Write a for loop to update the probabilities
+for(i in 1:10){
+ churnProb <- as.vector((AdjacencyMatrix %*% churnProb) / neighbors)
+}
+
+# Compute the AUC again
+auc(customers$churn, as.vector(churnProb))
+
+```
+
+The AUC decrease from 0.5215 to 0.5054!
+
+## Homophily
+
+### Homophily
+
+### Homophilic networks
+In which network would you expect to observe the least homophily?
+
+
+Network of fraudulent and legitimate credit card transactions
+
+Age in a network of Facebook friends
+
+Height of researchers in a collaboration network
+
+All of the above
+
+Answer: C. Height in this case is more randomly distributed
+
+### Extracting types of edges
+
+In this exercise, you will match the customer IDs in the customer dataframe with the customer edgelist to find out whether each edge is a churn, non-churn or a mixed edge. Using the function match(), you will add two columns to the edgelist.
+
+- fromLabel with the churn status of the from column
+- toLabel with the churn status of the to column
+
+The command match(x, y) returns a vector with the location of x in y. In the figure above match(edgeList\$from, customers\$id) is 1,1,1,2,2. For example, the fourth line in edgeList\$from, which is customer with id 393, is the second element in customers\$id. The churn label of this customer is, therefore, customers[2,2] or 0. Similarly, the churn label of everyone in edgeList\$from is customers[match(edgeList\$from, customers$id),2].
+
+- Add a column called FromLabel to the edgeList dataframe with the label of the from nodes by matching customers\$id with edgeList\$from and extracting customers\$churn.
+- Do the same for the to edges, and call this column ToLabel.
+- Add a column called edgeType to the edgeList dataframe that is the sum of the columns FromLabel and ToLabel.
+- Use the table() function to see the number of each type of edge.
+
+
+```{r}
+
+# Add the column edgeList$FromLabel
+edgeList$FromLabel <- customers[match(edgeList$from, customers$id), 2]
+ 
+# Add the column edgeList$ToLabel
+edgeList$ToLabel <- customers[match(edgeList$to, customers$id), 2]
+ 
+# Add the column edgeList$edgeType
+edgeList$edgeType <- edgeList$FromLabel + edgeList$ToLabel
+ 
+# Count the number of each type of edge
+table(edgeList$edgeType)
+
+
+```
+
+### Counting types of edges
+
+In this exercise, you will count the number of each edge type using the edgeType column in the edgeList dataframe. In the edgeList$edgeType column, there are three different values:
+
+- 0 for edges that connect two non-churn nodes.
+- 1 for edges that connect a non-churn and a churn node. These are called mixed or cross-label edges.
+- 2 for edges that connect two churn nodes.
+
+- Count the number of churn edges by conditioning on edgeList$edgeType. Assign the value to ChurnEdges.
+- Count the number of non-churn edges by conditioning on edgeList$edgeType. Assign the value to NonChurnEdges.
+- Count the number of mixed edges by conditioning on edgeList$edgeType. Assign the value to MixedEdges.
+- Count the total number of edges and assign the value to edges.
+
+```{r}
+# Count churn edges
+ChurnEdges <- sum(edgeList$edgeType == 2)
+ 
+# Count non-churn edges
+NonChurnEdges <- sum(edgeList$edgeType == 0)
+ 
+# Count mixed edges
+MixedEdges <- sum(edgeList$edgeType == 1)
+ 
+# Count all edges
+edges <- ChurnEdges + NonChurnEdges + MixedEdges
+
+#Print the number of edges
+edges
+```
+
+### Counting nodes and computing connectance
+
+In this exercise, you will count the number of each type of node using the customers dataframe. The churn column has two different values:
+
+0 for non-churners
+1 for churners
+
+You will also compute the network's connectance using the formula $p = \frac{2E}{N(N-1)}$where N is the number of nodes and E the number of edges in the network.
+
+- Count the number of churn nodes by conditioning on customers$churn.
+- Count the number of non-churn nodes by conditioning on customers$churn.
+- Count the total number of nodes and name the variable nodes.
+- Compute the network's connectance using the formula for p shown above. You can use edges from the previous exercise.
+
+
+```{r}
+
+# Count the number of churn nodes
+ChurnNodes <- sum(customers$churn == 1)
+ 
+# Count the number of non-churn nodes
+NonChurnNodes <- sum(customers$churn == 0)
+ 
+# Count the total number of nodes
+nodes <- ChurnNodes + NonChurnNodes
+ 
+# Compute the network connectance
+connectance <- 2 * edges / nodes / (nodes - 1)
+
+# Print the value
+connectance
+
+```
+
+### Dyadicity
+
+### Same label edges
+How many edges connect two black nodes in this network?
+
+![](https://assets.datacamp.com/production/repositories/2073/datasets/3f3a5849aa4a5c8248d7ceefa9d47205e07aff2f/Ch2EX2_1.jpg)
+
+Answer: 2
+
+### Dyadicity of churners
+
+In this exercise, you will compute the dyadicity amongst the churners in the network to see if they share more or fewer edges than expected in a random configuration of the network.
+
+The variables ChurnNodes, ChurnEdges, and connectance are available for you to use.
+
+For expected dyadicity, use the formula $\frac{n_c(n_c - 1)}{2}* p $ Where $n_c$ is the number of churners, N
+ is the number of nodes, and p is the connectance. Dyadicity of the churners is the ratio between the actual churners and the expected churn dyadicity.
+
+- Compute the expected dyadicity of churners and assign it to the variable ExpectedDyadChurn.
+- Compute the dyadicity of the churners by dividing ChurnEdges with ExpectedDyadChurn. Call this value DyadChurn.
+- Inspect DyadChurn.
+
+
+```{r}
+
+# Compute the expected churn dyadicity
+ExpectedDyadChurn = ChurnNodes * (ChurnNodes - 1) * connectance / 2
+
+# Compute the churn dyadicity
+DyadChurn <- ChurnEdges / ExpectedDyadChurn
+ 
+# Inspect the value
+DyadChurn
+
+```
+
+computing the dyadicity! Because the value is greater than 1, there is dyadicity amonst the churners!
+
+### Dyadicity of non-churners
+
+In the last exercise, you computed the dyadicity of churners. Now you will compute the dyadicity of non-churners in the same way.
+
+Given the variables NonChurnNodes, NonChurnEdges and connectance, what is the dyadicity of the non-churners?
+
+Remember the formula $\frac{n_{NC} (n_{NC} - 1)}{2}* p$ p is connectance
+
+```{r}
+
+ExpectedDyadNonChurn <- NonChurnNodes * (NonChurnNodes - 1) * connectance / 2
+
+DyadNonChurn <- NonChurnEdges / ExpectedDyadNonChurn
+
+DyadNonChurn
+
+```
+
+### Heterophilicity
+
+### Cross label edges
+How many cross label edges does this network have?
+
+![](https://assets.datacamp.com/production/repositories/2073/datasets/3f3a5849aa4a5c8248d7ceefa9d47205e07aff2f/Ch2EX2_1.jpg)
+
+Answer: 7
+
+### Compute heterophilicity
+
+Similar to dyadicity, heterophilicity is the ratio between the actual number of mixed label edges and the expected number of mixed label edges. In this exercise, you will compute the network's heterophilicity.
+
+For the expected number of mixed edges, use the formula $n_{NC} * n_{c} * p$ where $n_{NC}$ is the number of non-churners, $n_c$ is the number of churners and p is the connectance.
+
+You can use the variables NonChurnNodes, ChurnNodes, connectance, and MixedEdges.
+
+- Compute the expected number of mixed edges and assign it to the variable ExpectedHet.
+- Compute the heterophilicity by dividing the actual number of mixed edges with the expected number of mixed edges. Call this variable Het.
+- Is the network heterophilic? Inspect Het to find out.
+
+
+```{r}
+
+# comute the expected heterophilicity
+ExpectedHet <- ChurnNodes * NonChurnNodes * connectance
+
+# Comute the heterophilicity
+Het <- MixedEdges / ExpectedHet
+
+# Inspect the heterophilicity
+Het
+
+
+```
+computing the heterophilicity! It is less than one, which means that the network is heterophobic.
+
+### Summary of homophily
+
+### Dyadicity, Heterophilicity, & Homophily
+Depending on the values of H (heterophilicity) and D (diadicity), when is a network homophilic?
+
+H < 1 & D > 1
+
+
+### Is the network homophilic?
+
+Look at the network below. It has 35 nodes and 34 edges, with 9 green nodes, 2 edges connecting two green nodes, and 15 mixed edges. The connectance is p=0.057
+. This value is stored in the variable p.
+
+From the perspective of the green nodes, is the network homophilic? 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
