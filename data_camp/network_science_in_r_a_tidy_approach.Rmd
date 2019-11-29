@@ -211,7 +211,7 @@ ties_joined <- ties %>%
   select(from, to, name_from = name.x, name_to = name.y, betweenness)
 
 # See the result
-ties_selected %>%
+ties_joined %>%
   # Arrange rows by descending betweenness
   arrange(desc(betweenness))
 
@@ -405,7 +405,6 @@ The ties data frame is already loaded in the workspace.
 
 
 ```{r}
-
 # From previous step
 ties_swapped <- ties %>%
   mutate(temp = to, to = from, from = temp) %>% 
@@ -494,8 +493,6 @@ flat_S <- as.vector(S)
 hist(flat_S, xlab = "Similarity", main = "Histogram of similarity")
 
 
-
-
 ```
 
 ### Explore correlation between degree and strength
@@ -508,9 +505,7 @@ The data frame nodes, which contains the nodes of the network is at your disposa
 
 
 ```{r}
-
 # Using nodes, plot strength vs.degree
-
 nodes <- nodes %>%
   mutate(strength = strength(g),
          degree = degree(g)) 

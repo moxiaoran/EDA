@@ -167,12 +167,20 @@ plot(g2,
 
 ```
 
+### Quiz on igraph objects
+
+How many edges does Jasmine have in the network g1?
 
 ```{r}
+# show the number of edges
+E(g1)[.inc("Jasmine")]
 
-E(g1)[[inc('Jasmine')]]
+# in a data.frame format
+E(g1)[[inc("Jasmine")]]
 
 ```
+
+Reference: [Indexing edge sequences](https://igraph.org/r/doc/igraph-es-indexing.html)
 
 
 ## Identifying important vertices in a network
@@ -188,8 +196,8 @@ g1['Michael', 'Joe']
 incident(g1, 'Joe', mode = c("all"))
 
 # find all starting/tailing vertex off all edge
-
-head_of(g1, E(g1))
+is_directed(g1)
+head_of(g1, E(g1)) # in this case, g1 is undirected, head and tail is not defined
 tail_of(g1, E(g1))
 
 ```
@@ -310,6 +318,14 @@ g.b <- betweenness(g, directed = T)
 # Show histogram of vertex betweenness
 hist(g.b, breaks = 80)
 
+# plot the betweeness without normalized
+plot(g, 
+     vertex.label = NA,
+     edge.color = 'black',
+     vertex.size = g.b+1,
+     edge.arrow.size = 0.05,
+     layout = layout_nicely(g))
+
 # Create plot with vertex size determined by betweenness score
 plot(g, 
      vertex.label = NA,
@@ -415,7 +431,6 @@ g.apl
 ```
 
 ### Understanding network structures
-
 
 ### Random graphs
 
@@ -526,8 +541,7 @@ As you did for the average path length, let's investigate if the global transiti
 
 ```{r}
 # Calculate average transitivity of 1000 random graphs
-gl.tr <- lapply(gl, transitivity)
-gl.trs <- unlist(gl.tr)
+gl.trs <- sapply(gl, transitivity)
 
 # Get summary statistics of transitivity scores
 summary(gl.trs)
@@ -553,7 +567,7 @@ largest_cliques(g)
 clq <- max_cliques(g)
 
 # Calculate the size of each maximal clique.
-table(unlist(lapply(clq, length)))
+table(sapply(clq, length))
 
 ```
 
@@ -693,6 +707,7 @@ g <- graph_from_data_frame(measles, directed = F)
 
 # Perform fast-greedy community detection on network graph
 kc = fastgreedy.community(g)
+length(kc)
 
 # Determine sizes of each community
 sizes(kc)
@@ -714,7 +729,7 @@ An alternative community detection method is edge-betweenness. In this exercise 
 ```{r}
 # Perform edge-betweenness community detection on network graph
 gc = edge.betweenness.community(g)
-
+length(gc)
 # Determine sizes of each community
 sizes(gc)
 
