@@ -14,6 +14,7 @@ load pacakges and data
 library(tidyverse)
 library(igraph)
 library(ggraph)
+library(corrplot)
 library(pROC)
 library(visNetwork)
 theme_set(theme_minimal())
@@ -194,7 +195,6 @@ Reference: [FAST way to sum up neighbors' attributes in a large graph in R](http
 ### Challenges in Network learning
 Which statement is wrong about the challenges of social network based inference?
 
-
 - Splitting the data into training and test sets is not easy.
 
 - Inferences about entities might affect each other.
@@ -271,7 +271,6 @@ The AUC decrease from 0.5215 to 0.5054!
 
 ### Homophilic networks
 In which network would you expect to observe the least homophily?
-
 
 Network of fraudulent and legitimate credit card transactions
 
@@ -361,7 +360,6 @@ You will also compute the network's connectance using the formula $p = \frac{2E}
 
 
 ```{r}
-
 # Count the number of churn nodes
 ChurnNodes <- sum(customers$churn == 1)
  
@@ -405,7 +403,7 @@ For expected dyadicity, use the formula $\frac{n_c(n_c - 1)}{2}* p $ Where $n_c$
 ```{r}
 
 # Compute the expected churn dyadicity
-ExpectedDyadChurn = ChurnNodes * (ChurnNodes - 1) * connectance / 2
+ExpectedDyadChurn = ChurnNodes * (ChurnNodes - 1) /2 * connectance
 
 # Compute the churn dyadicity
 DyadChurn <- ChurnEdges / ExpectedDyadChurn
@@ -486,6 +484,559 @@ Look at the network below. It has 35 nodes and 34 edges, with 9 green nodes, 2 e
 . This value is stored in the variable p.
 
 From the perspective of the green nodes, is the network homophilic? 
+
+## Network Featurization
+
+### Basic Network features
+
+### Simple network features
+
+In this exercise, you will extract simple network features from the churn network and add them to the network object as node attributes. The igraph object called network with the node attribute Churn, indicating customers who have already churned, has been pre-loaded. The igraph library has also been loaded for you.
+
+1. Extract the normalized degree of each node in the network using the degree() function and name it degree
+
+```{r}
+# Extract network degree
+V(network)$degree <- degree(network, normalized=TRUE)
+
+```
+
+2. Use neighborhood.size() to extract the size of the second order neighborhood and call it degree2. Normalize degree2.
+
+```{r}
+# Extract 2.order network degree
+degree2 <- neighborhood.size(network, order = 2)
+
+# Normalize 2.order network degree
+V(network)$degree2 <- degree2 / (length(V(network)) - 1)
+
+```
+
+3. Extract the number of triangles with count_triangles() and add to network as a node attribute called triangles.
+
+```{r}
+# Extract number of triangles
+V(network)$triangles <- count_triangles(network)
+
+```
+
+### Centrality features
+
+In this exercise, you will compute and extract the centrality features betweenness, closeness, and eigenvector centrality.
+
+1. Extract the normalized betweenness of the nodes using betweenness(). Add it as a node attribute called betweenness.
+
+```{r}
+# Extract the betweenness
+V(network)$betweenness <- betweenness(network, normalized=TRUE)
+```
+
+2. Extract the normalized closeness using closeness() and add it to network as a node attribute called closeness
+
+```{r}
+# Extract the closeness
+V(network)$closeness <- closeness(network, normalized=TRUE)
+
+```
+
+3. Extract the scaled eigenvector centrality using eigen_centrality() and add its vector attribute as eigenCentrality.
+
+```{r}
+# Extract the eigenvector centrality
+V(network)$eigenCentrality <- eigen_centrality(network, scale = TRUE)$vector
+```
+
+### Transitivity
+
+In this exercise you will compute the network's transitivity, or clustering coefficient, both on the node level and on the global level.
+
+- Extract the transitivity of each node in the network using the transitivity() function and add it to the network object as a node attribute called transitivity.
+- Make sure you use the type local.
+- To avoid NA values, specify that isolated nodes should get the value zero.
+- Compute the global transitivity of the network using the function transitivity().
+
+```{r}
+# Extract the local transitivity
+V(network)$transitivity <- transitivity(network, type="local", isolates='zero')
+
+# Compute the network's transitivity
+transitivity(network)
+```
+
+
+### Link-Based Features
+
+### Adjacency matrices
+
+In this exercise, you will extract and compute the first and second order adjacency matrices of the network.
+You've already seen how to extract the first order adjacency matrix using the as_adjaceny_matrix() function in the slides. For the second-order adjacency matrix, you need to multiply the first order matrix with itself and replace all the positive values with 1 since we are working with unweighted networks only. You also need to make sure the elements on the diagonal are 0 since we do not allow self-edges.
+
+- Extract the network's adjacency matrix using the as_adjacency_matrix() function. Name the matrix AdjacencyMatrix.
+- Compute the second order adjacency matrix by multiplying AdjacencyMatrix with itself and call it SecondOrderMatrix_adj.
+- Create a new matrix, SecondOrderMatrix, by conditioning on SecondOrderMatrix_adj to make all positive values equal to 1. The elements on the diagonal should be 0.
+- Inspect the first 10 rows and first 10 columns of SecondOrderMatrix.
+
+```{r}
+# Extract the adjacency matrix
+AdjacencyMatrix <- as_adjacency_matrix(network)
+
+# Compute the second order matrix
+SecondOrderMatrix_adj <- AdjacencyMatrix %*% AdjacencyMatrix
+
+# Adjust the second order matrix
+SecondOrderMatrix <- ((SecondOrderMatrix_adj) > 0) + 0
+diag(SecondOrderMatrix) <- 0
+
+# Inspect the second order matrix
+SecondOrderMatrix[1:10, 1:10]
+
+```
+
+### Link-based features
+
+In this exercise, you will compute first order link-based features by multiplying the Churn attribute of the network with the network's adjacency matrix.
+
+Note, that since churn is a binary indicator, the attribute Churn has 1 for churners and 0 for non-churners. Consequently, the attribute 1-Churn has 1 for non-churners and 0 for churners. This is helpful when computing the number of non-churn neighbors.
+
+- Compute the attribute ChurnNeighbors, i.e. the number of neighbors who churned, by multiplying AdjacencyMatrix with the Churn attribute of network. Apply as.vector() to the result and add it to the network.
+- Similarly, compute NonChurnNeighbors, i.e. the number of non-churn neighbors.
+- Calculate the attribute RelationalNeighbor, the ratio of churners in the neighborhood, by dividing ChurnNeighbors with the sum of ChurnNeighbors and NonChurnNeighbors.
+
+```{r}
+
+# Compute the number of churn neighbors
+V(network)$ChurnNeighbors <- as.vector(AdjacencyMatrix %*% V(network)$churn)
+
+# Compute the number of non-churn neighbors
+V(network)$NonChurnNeighbors <- as.vector(AdjacencyMatrix %*% (1 - V(network)$churn))
+
+# Compute the relational neighbor probability
+V(network)$RelationalNeighbor <- as.vector(V(network)$ChurnNeighbors / (V(network)$ChurnNeighbors +
+                                             V(network)$NonChurnNeighbors))
+
+```
+
+
+### Second order link-based features
+
+In this exercise, you will compute the number and ratio of churn and non-churn neighbors in the second order neighborhood. The procedure is the same as in the previous exercise, except now you use the second order adjacency matrix.
+
+- Compute the number of churn neighbors in the second order neighborhood using SecondOrderMatrix and the Churn attribute. Convert the result with as.vector() and add it as ChurnNeighbors2 to network.
+- Also compute NonChurnNeighbors2, the number of non-churn neighbors in the second order neighborhood.
+- Calculate RelationalNeighbor2, the ratio of churners in the second order neighborhood, by dividing ChurnNeighbors2 with the sum of ChurnNeighbors2 and NonChurnNeighbors2.
+
+```{r}
+
+# Compute the number of churners in the second order neighborhood
+V(network)$ChurnNeighbors2 <- as.vector(SecondOrderMatrix %*% V(network)$churn)
+
+# Compute the number of non-churners in the second order neighborhood
+V(network)$NonChurnNeighbors2 <- as.vector(SecondOrderMatrix %*% (1 - V(network)$churn))
+
+# Compute the relational neighbor probability in the second order neighborhood
+V(network)$RelationalNeighbor2 <- as.vector(V(network)$ChurnNeighbors2 / 
+    (V(network)$ChurnNeighbors2 + V(network)$NonChurnNeighbors2))
+
+```
+
+
+### Neighborhood link-based features
+
+Sometimes, the feature values of neighboring nodes have an effect on behavior. In this exercise, you will look at the attribute value of neighboring nodes and compute their average. You will do this for degree, triangles, transitivity, and betweenness.
+
+You need to:
+
+- Multiply the adjacency matrix with the network attribute you want to find the average of, to obtain the overall value in the neighborhood.
+- To get the average, divide by the node's degree, given by the vector degree which has been pre-loaded.
+- Finally, convert the result to a vector and assign to network as a node attribute.
+
+1. Compute the neighborhoods' average degree using the degree node attribute of network and name it averageDegree.
+
+```{r}
+degree <- degree(network)
+
+# check network nodes attr names
+vertex_attr_names(network)
+
+# Extract the average degree of neighboring nodes
+V(network)$averageDegree <-  as.vector(AdjacencyMatrix %*% V(network)$degree) / degree
+
+```
+
+2. Use the triangles node attribute to compute averageTriangles, just as you computed averageDegree with degree.
+
+```{r}
+
+# Extract the average number of triangles of neighboring nodes
+V(network)$averageTriangles <- 
+    as.vector(AdjacencyMatrix %*% V(network)$triangles) / degree
+
+```
+
+3. Compute averageTransitivity using the node attribute transitivity.
+
+```{r}
+
+# Extract the average transitivity of neighboring nodes    
+V(network)$averageTransitivity<-
+    as.vector(AdjacencyMatrix %*% V(network)$transitivity) / degree
+
+```
+
+4. Use the node attribute betweenness to compute averageBetweenness.
+
+```{r}
+
+# Extract the average betweenness of neighboring nodes    
+V(network)$averageBetweenness <- 
+    as.vector(AdjacencyMatrix %*% V(network)$betweenness) / degree
+
+```
+
+### PageRank
+
+### Most influential node
+Below you see the kite network. Which of these people is most influential?
+
+![](https://assets.datacamp.com/production/repositories/2073/datasets/78d5dab1e700608bd32cc3f9d1a41115c55ca59b/Kite.png)
+
+### Changes in PageRank
+
+The PageRank formula $\vec{PR} = \alpha * A * \vec{PR} + (1-\alpha)*\vec{e}$ can be solved for $\vec{PR}$ iteratively. In each iteration, the current value of $\vec{PR}$ is used to compute a new value that is closer to the true value. This means that the difference between the $\vec{PR}_s$ of every two subsequent iterations becomes smaller and smaller until $\vec{PR}$ converges to the true value and the difference becomes (almost) zero. In this exercise, you will inspect the PageRank algorithm and how it converges.
+
+- Compute one iteration with the PageRank algorithm using page.rank() with network and indicating niter=1. Extract the vector attribute and assign the result to iter1.
+- Repeat the last step with niter=2. Assign the result to iter2.
+- Compute the sum of the absolute difference between the vectors iter1 and iter2.
+- We have computed iter9 and iter10 in the same way as iter1 and iter2. Is the difference between these two iterations less than between iterations 1 and 2.
+
+
+```{r}
+# Compute one iteration of PageRank 
+iter1 <- page_rank(network, options = list(niter = 1))$vector
+
+# Compute two iterations of PageRank 
+iter2 <- page.rank(network, options = list(niter = 2))$vector
+
+# Inspect the change between one and two iterations
+sum(abs(iter2 - iter1))
+
+# Compute nine and ten iterations of PageRank 
+iter10 <- page.rank(network, options = list(niter = 10))$vector
+iter9 <- page.rank(network, options = list(niter = 9))$vector
+
+# Inspect the change between nine and ten iterations
+sum(abs(iter10 - iter9))
+
+```
+
+### Convergence of PageRank
+
+In this exercise, you will visually inspect how the PageRanks converge by plotting the differences of every two subsequent iterations.
+
+- Create an empty vector called value.
+- Write a for loop with 15 steps. For each step in the loop, compute the PageRank value of network with i iterations.
+Add the vector attribute as a column to value using cbind().
+- Compute the absolute difference between each subsequent pair of PageRank vectors in value and assign to difference.
+- Plot the difference vector to inspect the convergence of the PageRank values.
+
+```{r}
+
+# Create an empty vector
+value <- c()
+
+# Write a loop to compute PageRank 
+for(i in 1:15){
+  value <- cbind(value, page_rank(network,options = list(niter = i))$vector)
+}
+  
+# Compute the differences 
+difference <- colSums(abs(value[,1:14] - value[,2:15]))
+
+# Plot the differences
+plot(1:14, difference)
+
+```
+
+### Personalized PageRank
+
+In this exercise, you will study the difference between the PageRank and the personalized PageRank algorithms. You can use the function boxplots, which shows the score distributions of churners and non-churners with two separate boxplots. The function has two arguments:
+
+damping, indicating the value of the damping factor. The default value is set to 0.85.
+personalized, a Boolean parameter that indicates whether the personalized PageRank algorithm should be used. When TRUE, the restart vector has 1 for the churners in the network and 0 for the non-churners. The default value is FALSE, i.e. not personalized.
+
+
+```{r}
+
+boxplots <- function(damping = 0.85, personalized = FALSE) {
+  if(personalized) {
+    V(network)$pp <- page_rank(network, damping = damping, personalized = V(network)$churn)$vector
+  }
+  else {
+    V(network)$pp <- page_rank(network, damping = damping)$vector
+  }
+  boxplot(V(network)$pp ~ V(network)$churn)
+}
+
+```
+
+
+```{r}
+# Look at the distribution of standard PageRank scores
+boxplots(damping = 0.85)
+
+# Inspect the distribution of personalized PageRank scores
+boxplots(damping = 0.85, personalized = T)
+
+# Look at the standard PageRank with damping factor 0.2
+boxplots(damping = 0.2)
+
+# Inspect the personalized PageRank scores with a damping factor 0.99
+boxplots(0.99, T)
+```
+
+### Extract PageRank features
+
+In this exercise, you will compute a few PageRank scores and add them as features to the network.
+
+When personalizing, use the prior churners in the network as the restart vector. That is, include the argument personalized = V(network)$churn.
+
+The default damping value is 0.85.
+
+1. Compute the default PageRank score, extract the vector and add it as an attribute to network called pr_0.85.
+
+```{r}
+
+# Compute the default PageRank score
+V(network)$pr_0.85 <- page_rank(network)$vector
+
+```
+
+2. Compute the PageRank score with damping factor 0.2 and add it to network as pr_0.20
+
+```{r}
+
+# Compute the PageRank score with damping 0.2
+V(network)$pr_0.20 <- page.rank(network, damping = 0.2)$vector
+
+```
+
+3. Compute the default personalized PageRank score and call it perspr_0.85. Look at the instructions above to see how.
+
+```{r}
+
+# Compute the personalized PageRank score
+V(network)$perspr_0.85 <- page.rank(network, personalized = V(network)$churn)$vector
+
+```
+
+4. Compute the personalized PageRank score with damping factor 0.99 and name it perspr_0.99.
+
+```{r}
+
+# Compute the personalized PageRank score with damping 0.99
+V(network)$perspr_0.99 <- page_rank(network, damping = 0.99, personalized = V(network)$Churn)$vector
+
+```
+
+## Putting it all together
+
+
+### Extract a dataset
+
+### Getting a flat dataset
+
+In this exercise, you will turn your network into a dataframe, where the rows are the people in the network and the columns are the network features you computed in the previous chapter. You will also prepare the dataset for the pre-processing.
+
+- Extract the dataframe of the customers using the as_data_frame() function. Note that you want the node attributes, i.e. vertices. Call the dataset studentnetworkdata_full
+- Inspect the first few rows of the data frame using the head() function.
+- Remove the customers who already churned by conditioning on the Churn attribute. Call this dataframe studentnetworkdata_filtered
+- Remove the first two columns, called Churn and name, since you don't need them anymore and name the dataframe studentnetworkdata.
+
+```{r}
+
+# Extract the dataset
+studentnetworkdata_full <- igraph::as_data_frame(network, what = "vertices")
+
+# Inspect the dataset
+head(studentnetworkdata_full)
+
+# Remove customers who already churned
+studentnetworkdata_filtered <- studentnetworkdata_full[-which(studentnetworkdata_full$churn == 1), ]
+
+# Remove useless columns
+studentnetworkdata <- studentnetworkdata_filtered[, -c(1, 2)]
+
+```
+
+### Missing Values
+
+You can check if a dataset has missing values per column using the apply() function.
+
+- The first argument of apply() is the dataframe you are inspecting, in this case, studentnetworkdata.
+- The second argument indicates whether operations should be performed row-wise (1) or column-wise (2).
+- The third argument is the function applied to each row or column. You specify it by writing function(x) ... where ... indicates the operation.
+You want to count the number of missing values in each column. Use sum(is.na(x)) to find all the missing values and count them.
+
+How many columns in studentnetworkdata have missing values?
+
+
+### Replace missing values
+
+In the last exercise, you noticed that for six observations, the value of RelationalNeighborSecond was missing. In this exercise, you will replace those missing values with 0.
+
+- Use summary() to inspect the RelationalNeighborSecond feature.
+- Find the indices of the observations that are missing using which() and assign to the variable toReplace.
+- Use the toReplace vector to replace the missing values instudentnetworkdata$RelationalNeighborSecond with a zero.
+- Inspect RelationalNeighborSecond again to make sure there are no longer any missing value.
+
+```{r}
+
+# Inspect the feature
+summary(studentnetworkdata$RelationalNeighbor2)
+
+# Find the indices of the missing values
+toReplace <- which(is.na(studentnetworkdata$RelationalNeighbor2))
+
+# Replace the missing values with 0
+studentnetworkdata$RelationalNeighbor2[toReplace] <- 0
+
+# Inspect the feature again
+summary(studentnetworkdata$RelationalNeighbor2)
+
+```
+
+### Correlated variables
+
+In this exercise, you will inspect the dataset with respect to correlated variables. It is important to remove them before applying a binary classifier, especially in the case of logistic regression. When two or more variables are highly correlated you should remove all except for one.
+
+First, we will use the corrplot() function in the corrplot package to visualize the correlations. In the correlation plot, blue represents a positive correlation and red a negative correlation. A darker color indicates a higher correlation. Finally, you will remove the highly correlated variables from the data set.
+
+- Load the corrplot package.
+- Generate a correlation matrix, M, using the function cor(). The function takes a subset of the dataset as an argument.
+- Visualize the correlation between the variables using corrplot() and M.
+
+
+```{r}
+
+# Remove the Future column from studentnetworkdata 
+no_future <- studentnetworkdata[, -1]
+
+# Load the corrplot package
+library(corrplot)
+
+# Generate the correlation matrix
+M <- cor(no_future)
+
+# Plot the correlations
+corrplot(M, method = "circle")
+
+```
+
+- Based on the plot, you should remove NonChurnNeighbors, NonChurnNeighborsSecond, pr_0.85, perspr_0.99.
+- With colnames(), print the column names.
+- Store the indices of the variables above toRemove.
+- Remove them from studentnetworkdata.
+
+```{r}
+
+# Print the column names
+names(studentnetworkdata)
+
+# Create toRemove
+toRemove <- c(10, 11, 19, 22)
+
+# Remove the columns
+studentnetworkdata_no_corrs <- studentnetworkdata[, -toRemove]
+
+
+
+```
+
+### Building a predictive model
+
+### Split into train and test
+
+Now that we have a dataframe, we can apply standard techniques for modeling. In this exercise, you will split the data into training and test sets.
+
+- To ensure the reproducibility of your results, set a seed to 7, using set.seed().
+- Use the sample() function to sample two-thirds of the numbers from the sequence from the range of the total number of rows in studentnetworkdata. Name this vector index_train.
+- Create the training set by including the rows of studentnetworkdata that are stored in index_train and name it training_set.
+- Create the test set by excluding the rows of studentnetworkdata that are stored in index_train and name it test_set.
+
+```{r}
+
+# Set the seed
+set.seed(7)
+
+# Creat the index vector
+index_train <- sample(1:nrow(studentnetworkdata), 2 / 3 * nrow(studentnetworkdata))
+
+# Make the training set
+training_set <- studentnetworkdata[index_train,]
+
+# Make the test set
+test_set <- studentnetworkdata[-index_train,]
+
+```
+
+### Logistic regression model
+
+In this exercise, you will build churn prediction models using logistic regression. These models predict which customers will churn in the future. You will build three models with different sets of features.
+The target variable is called Future. You will build the models using the training dataset training_set and the function glm().
+
+### Random forest model
+
+In this exercise, you will use the randomForest() function in the randomForest package to build a random forest model for predicting churn of the customers in the training data set, training_set. The target variable is called Future. You will also inspect and visualize the importance of the variables in the model.
+
+
+### Evaluating model performance
+
+Predicting churn
+
+In this exercise, you will use the predict() function in the pROC package to predict the churn probability of the customers in the test set, test_set. The function has three arguments:
+
+- The model used to make the predictions.
+- newdata: The dataset the model should be applied to.
+- type: the type of prediction. We want to know the probability of churn, so we choose either response or prob.
+Use the function predict() to predict the churn probability of the customers in test_set.
+
+### Measure AUC
+
+In this exercise, you will compute the AUC of your churn prediction models to find the best one. Use the auc() function in the pROC package. The function has two arguments:
+
+The true churn label in the test set, test_set$Future.
+The model prediction:
+a. For logistic regression, it is the prediction obtained from the predict function.
+b. For random forest, it is the second column of the prediction obtained from the predict function.
+The objects firstPredictions, secondPredictions, thirdPredictions, and rfPredictions have been loaded for you.
+
+Which model has the highest AUC value?
+
+
+### Measure top decile lift
+
+Compute and compare the top decile lift of the churn prediction models using the function TopDecileLift() in the lift package. The function takes two arguments:
+
+- The true churn label in the test set, test_set$Future.
+- The model prediction: a. For logistic regression, use the prediction from the predict function. b. For random forest, use the second column of the predictions from the predict function.
+The objects firstPredictions, secondPredictions, thirdPredictions, and rfPredictions, and the package lifthave been loaded for you.
+
+Which model has the highest top decile lift?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
