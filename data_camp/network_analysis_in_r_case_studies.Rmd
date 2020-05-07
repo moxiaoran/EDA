@@ -1,0 +1,181 @@
+---
+title: 'Network Analysis in R: Case Studies'
+author: "Yifei Liu"
+date: "11/29/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# load packages
+library(tidyverse)
+library(igraph)
+library(ggraph)
+library(visNetwork)
+theme_set(theme_minimal())
+
+detach("package:dplyr", unload = TRUE)
+library(dplyr)
+
+# load dataset
+ amzn_g <- read_graph(file = "/Users/yifeiliu/Documents/R/data/EDA/datacamp/network/amzn_g.gml", format = "gml")
+ip_df_list <- readRDS("/Users/yifeiliu/Documents/R/data/EDA/datacamp/network/time_graph.rds")
+
+```
+
+
+## Exploring graphs through time
+
+### Exploring Your Data Set
+
+### Finding Dyads and Triads
+
+Let's think a little bit more about what we can learn from dyad and triad censuses of the overall graph. Because we are interested in understanding how items are purchased together and whether or not they are reciprocally purchased, dyad and triad censuses can provide a useful initial look. A dyad census will tell us how many items are purchased reciprocally vs. asymmetrically. The triad census will tell us which items might be important, specifically patterns 4, 9, and 12. All of these have one vertex that has 2 out degree edges and no in degree edges. Edge density should also give some insight we expect for graph clustering.
+
+The Amazon co-purchase graph, amzn_g, is available.
+
+Explore amzn_g.
+
+- Do a dyad census using the dyad_census() function.
+- Do a triad census using the triad_census() function.
+- Find the edge density using the edge_density() function.
+
+```{r}
+
+# The graph, amzn_g, is available
+amzn_g
+
+# Perform dyad census
+dyad_census(amzn_g)
+
+# Perform triad census
+triad_census(amzn_g)
+
+# Find the edge density
+edge_density(amzn_g)
+
+```
+
+### Clustering and Reciprocity
+
+Our previous work looking at the dyad census should give some intuition about how we expect other graph level metrics like reciprocity and clustering in our co-purchase graph to look. Recall that there are 10,754 edges in our graph of 10,245 vertices, and of those, more than 3,000 are mutual, meaning that almost 60 percent of the vertices have a mutual connection. What do you expect the clustering and reciprocity measures to look like given this information? We can test our intuition against a null model by simulating random graphs. In light of the results of our previous simulation, what do you expect to see here? Will reciprocity also be much higher than expected by chance?
+
+The graph, amzn_g is available.
+
+- Calculate the reciprocity of amzn_g using reciprocity(), assigning to actual_recip.
+- Calculate the order of the graph with gorder(), assigning to n_nodes.
+- Calculate the edge density of the graph with edge_density(), assigning to edge_dens.
+
+```{r}
+# Calculate reciprocity
+actual_recip <- reciprocity(amzn_g)
+
+# Calculate the order
+n_nodes <- gorder(amzn_g)
+
+# Calculate the edge density
+edge_dens <- edge_density(amzn_g)
+```
+
+- Simulate the reciprocity. Inside the for loop,
+   - Call erdos.renyi.game() to generate a simulated graph. Pass it the order, the edge density, and set directed to TRUE.
+   - Calculate the reciprocity of the simulated graph.
+   
+```{r}
+
+#Run the simulation
+
+simulated_recip <- rep(NA, 1000) 
+
+for (i in 1000) {
+  #Genderate an Erdos_Renyo simulated graph
+  simulated_graph <- erdos.renyi.game(n_nodes, edge_dens, directed = T)
+  # Calculate the reprocity of the simulated graph
+  simulated_recip <- reciprocity(simulated_graph)
+}
+
+```
+
+- Compare the simulated reciprocity to the value from the original graph.
+   - Take a look at the original reciprocity, actual_recip.
+   - Calculate the 0.025, 0.5, and 0.975 quantiles of simulated_recip.
+
+```{r}
+
+# Reciprocity of the original graph
+actual_recip
+
+# Calculate quantile of simulated reciprocity
+quantile(simulated_recip , c(0.025,0.5,0.975))
+
+tibble(list = 1:1000,
+       value = simulated_recip) %>%
+  ggplot(aes(x = value)) +
+  geom_histogram(bins = 20, fill = NA, color = "black") +
+  geom_vline(aes(xintercept = actual_recip), color = "red", lty = 3) +
+  theme_minimal()
+
+
+```
+
+notice how the reciprocity of the simulations is much lower than the reciprociy of the original graph.
+
+### Important Products
+
+We've now seen that there's a clear pattern in our graph. Let's take the next step and move beyond just understanding the structure. Given the context of graph structure, what can we learn from it? For example, what drives purchases? A place to start might be to look for "important products", e.g. those products that someone purchases and then purchases something else. We can make inferences about this using in degree and out degree. First, we'll look at our graph and see the distribution of in degree and out degree, and then use that to set up a working definition for what an "important product" is (something that has > X out degrees and < Z in degrees). We'll then make a subgraph to visualize what these subgraphs look like.
+
+```{r}
+
+# Calculate the "out" degrees
+out_degree <- degree(amzn_g, mode = "out")
+
+## ... and "in" degrees
+in_degree <- degree(amzn_g, mode = "in")
+
+# See the distribution of out_degree
+table(out_degree)
+
+## ... and of in_degree
+table(in_degree)
+
+```
+
+- Define a logical vector of important cases: where out_degree is greater than 3 and in_degree is less than 3.
+- Use V() to get the vertices of amzn_g, and use square brackets to filter on is_important to find the important products.
+
+```{r}
+# Create condition of out degree greater than 3
+# and in degree less than 3
+is_important <- out_degree > 3 & in_degree < 3
+
+# Subset vertices by is_important
+imp_prod <- V(amzn_g)[is_important]
+
+# Output the vertices
+print(imp_prod)
+```
+
+### What Makes an Important Product?
+
+Now that we've come up with a working definition of an important product, let's see if they have any properties that might be correlated. One candidate pairing is salesrank.from and salesrank.to. We can ask if important products tend to have higher sales ranks than the products people purchase downstream. We'll look at this by first subsetting out the important vertices, joining those back to the initial dataframe, and then creating a new dataframe using the package dplyr. We'll create a new graph, and color the edges blue for high ranking (1, 2, 3) to low ranking (20, 21, 22) and red for the opposite. If rank is correlated with downstream purchasing, then we'll see mostly blue links, and if there's no relationship, it will be about equally red and blue.
+
+The dataset ip_df contains the information about important products.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

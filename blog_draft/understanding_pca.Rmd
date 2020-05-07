@@ -1,0 +1,27 @@
+---
+title: "Understanding PCA iusing stack overflow data"
+author: "Yifei Liu"
+date: "2/7/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Just finish Mathematics for Machine Learning series from imperial College London Coursera website. Understand the mathematics behind the details of some most used machine learning algorithms such as PCA. I just come across Julia Sailge video on how she use PCA in real life data science analysis project. I hope by reproduce her project, I'm also able to apply this techniques in my own analysis project. 
+
+```{r}
+
+# load packages and dataset
+library(tidyverse)
+library(tidytext)
+library(scales)
+
+
+```
+
+
+
+
+Article: [Understanding PCA using stack overflow data](https://juliasilge.com/blog/stack-overflow-pca/)

@@ -12,19 +12,1023 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r}
 library(tidyverse)
 library(gt) # remotes::install_github("rstudio/gt")
-library(tidyquant)
+library(emo) # devtools::install_github("hadley/emo")
+detach("package:dplyr", unload = TRUE)
+library(dplyr)
+```
+
+## introducing the gt packages
+
+```{r}
+exibble
+
+exibble %>% gt()
+
+tab <- exibble %>% gt(
+  rowname_col = "row",
+  groupname_col = "group"
+)
+
+tab_2 <- tab %>%
+  fmt_scientific(
+    columns = vars(num),
+    decimals = 3
+  )
+
+tab_2
+
+tab_3 <- tab_2 %>%
+  fmt_date(
+    columns = vars(date),
+    rows = grepl("^[a-d]", char),
+    date_style = 6
+  )
+
+tab_3
+
+```
+
+
+```{r}
+
+info_date_style()
+
+
+```
+
+
+```{r}
+# Anyway, let's get ride of some columns
+tab_4 <- tab_3 %>%
+  cols_hide(
+    columns = vars(char, fctr, time, datetime)
+  )
+
+tab_4
+
+#Format the currency columns to have
+
+tab_5 <- tab_4 %>%
+  fmt_currency(columns = vars(currency),
+               currency = "GBP")
+
+tab_5
+
+# Add conditional footnotes to some of the 'currency' values
+
+tab_6 <- tab_5 %>%
+  tab_footnote(
+    footnote = "These are lower prices.",
+    locations = cells_body(
+      columns = vars(currency),
+      rows = currency < 20
+    )
+  )
+
+tab_6
+
+# Add a footntos to the `currency` column label itself
+
+tab_7 <- tab_6 %>%
+  tab_footnote(
+    footnote = "All values are in GBP",
+    locations = cells_column_labels(
+      columns = vars(currency)
+    )
+  )
+
+tab_7
+
+# Add a header to the table (with a title and a subtitle, use md for markdown format)
+
+tab_8 <- tab_7 %>%
+  tab_header(
+    title = "An Exibble Example",
+    subtitle = md("Uses the *exibble* dataset from **gt**")
+  )
+tab_8
+
+
+
+```
+
+
+pizza_tab_email dataset
+
+
+
+```{r}
+
+sizes_order <- c("S", "M", "L", "XL", "XXL")
+types_order <- c("Classic", "Chicken", "Supreme", "Veggie")
+
+pizzaplace %>% 
+  mutate(type = str_to_title(type),
+         size = factor(size, levels = sizes_order),
+         type = factor(type, levels = types_order)) %>%
+  group_by(type, size) %>%
+  summarize(
+    pies = n(),
+    income = sum(price)
+  ) %>%
+  arrange(type, size) %>%
+  gt(rowname_col = "size") %>%
+  fmt_currency(
+    columns = vars(income),
+    currency = "USD"
+  ) %>%
+  fmt_number(
+    columns = vars(pies),
+    use_seps = TRUE,
+    decimals = 0
+  ) %>%
+  summary_rows(
+    groups = TRUE,
+    columns = "pies",
+    fns = list(TOTAL = "sum"),
+    formatter = fmt_number,
+    use_seps = TRUE,
+    decimals = 0
+    ) %>%
+   summary_rows(
+    groups = TRUE,
+    columns = "income",
+    fns = list(TOTAL = "sum"),
+    formatter = fmt_currency,
+    currency = "USD"
+    ) %>%
+  tab_options(
+    summary_row.background.color = "#FFFEEE",
+    table.font.size = px(14),
+    row_group.background.color = "#E6EFFC",
+    row_group.padding = "5px") %>%
+  cols_label(
+    pies = "Pizzas",
+    income = "Income"
+    ) %>%
+  tab_header(
+    title = paste0("My ", emo::ji("pizza"), " sales in 2015"),
+    subtitle = "Split by the type of pizza and the size"
+    ) %>%
+  tab_footnote(
+    footnote = md("Only **The Greek Pizza** comes in this size."),
+    locations = cells_stub(rows = 4:5)
+    ) %>%
+  tab_footnote(
+    footnote = "The small-sized classic pizzas sold the most.",
+    locations = cells_body(columns = 1, rows = 1)
+    ) %>%
+  as_raw_html()
+ 
+  
+
+
+
+```
+
+
+## Introduction to Creating gt Tables
+
+```{r}
+# take the biggest islands in the world from `islands` dataset
+islands_tbl <- 
+  dplyr::tibble(
+    name = names(islands),
+    size = islands
+  ) %>%
+  dplyr::arrange(desc(size)) %>%
+  dplyr::slice(1:10)
+
+islands_tbl
+
+```
+
+
+
+```{r}
+# create a display table showing ten of the largest islands in the world
+gt_tbl <- gt(data = islands_tbl)
+
+gt_tbl
+
+
+
 ```
 
 ```{r}
-codelist %>%
-  filter(country.name.en == "Australia") %>%
-  select(continent,country.name.en, iso2c)
+
+gt_tbl_1 <- gt_tbl %>%
+  tab_header(
+    title = "Large Landmasses of the World",
+    subtitle = "The Top Ten Largest are presented"
+  )
+
+gt_tbl_1
 
 ```
 
 ```{r}
 
+gt(islands_tbl[1:2, ]) %>%
+  tab_header(
+    title = md("**Large Landmess of the World**"),
+    subtitle = md("the *top two* larest are presented")
+  )
 
+
+```
+
+```{r}
+gt_tbl_2 <- gt_tbl_1 %>%
+  tab_source_note(
+    source_note = "Source: The World Almanac and Book of Facts, 1875, page 406."
+  ) %>%
+  tab_source_note(
+    source_note = md("Refreence: McNeil, D.R. (1977) *Interactive Data ANalysis*. Wiley")
+  )
+
+gt_tbl_2
+
+```
+
+```{r}
+
+gt_tbl_3 <- gt_tbl_2 %>%
+  tab_footnote(
+    footnote = "The Americans.",
+    locations = cells_body(
+      columns = vars(name),
+      rows = 3:4
+    )
+  )
+
+gt_tbl_3
+
+```
+
+```{r}
+
+# Determine the row that contains the largest landmass ('Asia')
+
+largest <- islands_tbl %>%
+  slice(1) %>%
+  pull(name)
+
+# create two additional footnotes, using the `columns` and `where` arguments of `data_cells()`
+
+gt_tbl_4 <- gt_tbl_3 %>%
+  tab_footnote(
+    footnote = md("The **largest** by area."),
+    locations = cells_body(
+      columns = vars(size),
+      rows = name == largest
+    )
+  ) %>%
+  tab_footnote(
+    footnote = "The lowest by population.",
+    locations = cells_body(
+      columns = vars(size),
+      rows = size == min(size)
+    )
+  )
+
+gt_tbl_4
+
+```
+
+The stub
+
+```{r}
+
+gt_tbl <- islands_tbl %>%
+  gt(rowname_col = "name")
+
+gt_tbl
+```
+
+notice the landmass names are off the left in an unstriped area? That's the **stub**. 
+```{r}
+
+gt_tbl_1 <- gt_tbl %>%
+  tab_stubhead(label = "landmass")
+
+gt_tbl_1
+```
+
+```{r}
+
+gt_tbl_2 <- gt_tbl_1 %>%
+  tab_header(
+    title = "Largest Landmass of the World",
+    subtitle = "The top ten largest are presented"
+  ) %>%
+  tab_source_note(
+    source_note = "Source: The World Almanac and Book of Facts, 1975, page 406."
+  ) %>%
+  tab_source_note(
+    source_note = md("Reference: McNeil,  D. R. (1977) *Interactive Data Analysis*. Wiley.")
+  ) %>%
+  tab_footnote(
+    footnote = md("The **largest** by area"),
+    locations = cells_body(
+      columns = vars(size),
+      rows = size == max(size)
+    )
+  ) %>%
+  tab_footnote(
+    footnote = "The lowest by population.",
+    locations = cells_body(
+      columns = vars(size),
+      rows = contains("arc")
+    )
+  )
+
+gt_tbl_2
+
+```
+
+let's divided rows into groups, creating row groups. and results in a display of _row group labels_ right above the each group. 
+
+```{r}
+
+gt_tbl_3 <- gt_tbl_2 %>%
+  tab_row_group(
+    group = "continent",
+    rows = 1:6
+  ) %>%
+  tab_row_group(
+    group = "country",
+    rows = c("Australia", "Greenland")
+  ) %>%
+  tab_row_group(
+    group = "subcontinent",
+    rows = c("New Guinea", "Borneo")
+  )
+
+gt_tbl_3
+
+```
+
+The column labels
+
+
+```{r}
+
+airquality_m <- airquality %>%
+  mutate(Year = 1973L) %>%
+  slice(1:10)
+
+# create a display table using the `airquality` dataset; arrange columns into groups
+
+gt_tbl <-gt(airquality_m) %>%
+  tab_header(
+    title = "New York Air Quality Measurements",
+    subtitle = "Daily measurements in New York City (May 1-10, 1973)"
+  ) %>%
+  tab_spanner(
+    label = "Time",
+    columns = vars(Year, Month, Day)
+  ) %>%
+  tab_spanner(
+    label = "Measurement",
+    columns = vars(Ozone, Solar.R, Wind, Temp)
+  )
+
+gt_tbl
+
+```
+
+we need to do two more things to make this table presentable
+
+* Move the time columns to the beginning of the series (use cols_move_to_start)
+* Customize the column labels so that they are more descriptive (use cols_label)
+
+```{r}
+
+gt_tbl_1 <- gt_tbl %>%
+  cols_move_to_start(
+    columns = vars(Year, Month, Day)
+  ) %>%
+  cols_label(
+    Ozone = html("Ozone,<br>ppdv"),
+    Solar.R = html("Solar R.,<br>cal/m<sup>2</sup>"),
+    Wind = html("Wind,<b>mph"),
+    Temp = html("Temp,<br>&deg;F")
+  )
+
+gt_tbl_1
+
+```
+
+
+
+## gt Datasets
+
+1. countrypops 
+
+```{r}
+
+# Get vectors of 2-letter country codes for
+# each region of Oceania
+Australasia <- c("AU", "NZ")
+Melanesia <- c("NC", "PG", "SB", "VU")
+Micronesia <- c("FM", "GU", "KI", "MH", "MP", "NR", "PW")
+Polynesia <- c("PF", "WS", "TO", "TV")
+
+# Create a gt table based on a preprocessed `countrypops`
+countrypops_dbl <- countrypops %>%
+  dplyr::filter(country_code_2 %in% c(
+    Australasia, Melanesia, Micronesia, Polynesia)
+  ) %>%
+  dplyr::filter(year %in% c(1995, 2005, 2015)) %>%
+  dplyr::mutate(region = case_when(
+    country_code_2 %in% Australasia ~ "Australasia",
+    country_code_2 %in% Melanesia ~ "Melanesia",
+    country_code_2 %in% Micronesia ~ "Micronesia",
+    country_code_2 %in% Polynesia ~ "Polynesia",
+  )) %>%
+  tidyr::spread(key = year, value = population) %>%
+  dplyr::arrange(region, desc(`2015`)) %>%
+  dplyr::select(-starts_with("country_code")) 
+
+gt_tbl <- countrypops_dbl %>%
+  gt(rowname_col = "country_name",
+     groupname_col = "region")
+
+gt_tbl %>%
+  tab_header("Population of Oceania's Countries in 1995, 2005, and 2015") %>%
+  tab_spanner(
+    label = "Total population",
+    columns = vars(`1995`, `2005`, `2015`)
+  ) %>%
+  fmt_number(
+    columns = vars(`1995`, `2005`, `2015`),
+    decimals = 0, 
+    use_seps = TRUE
+  )
+
+```
+
+2. sza
+
+```{r}
+
+sza_tbl <- sza %>%
+  filter(latitude == 20,
+         !is.na(sza)) %>%
+  select(-latitude) %>%
+  spread(key = "tst", value = sza)
+
+gt_tbl <- sza_tbl %>%
+  gt(rowname_col = "month") %>%
+  fmt_missing(
+    columns = TRUE,
+    missing_text = ""
+  ) %>%
+  tab_stubhead(label = html("month<br>(20&deg;N)")) %>%
+  tab_header(title = html("&#x2600; Solar Zenith Angles &#x2600;")) %>%
+  tab_options(
+    column_labels.font.size = "smaller",
+    table.font.size = "smaller",
+    data_row.padding = px(3)
+  )
+
+gt_tbl
+
+```
+
+3. gt cars
+
+```{r}
+# create a gt table based on a preprocessed `gtcars`
+
+gt_tbl <- gtcars %>%
+  dplyr::filter(ctry_origin == "Germany") %>%
+  dplyr::group_by(mfr) %>%
+  dplyr::top_n(2, msrp) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(mfr, model, drivetrain, msrp) %>%
+  gt()
+
+gt_tbl %>%
+  tab_header(title = "Select German Automobiles") %>%
+  cols_merge(
+    columns = vars(mfr, model),
+    hide_columns = vars(model)
+  ) %>%
+  text_transform(
+    locations = cells_body(columns = vars(drivetrain)), 
+    fn = function(x) toupper(x)
+  ) %>%
+  fmt_currency(
+    columns = vars(msrp),
+    currency = "USD",
+    decimals = 0
+  ) %>%
+  cols_label(
+    mfr = "Car",
+    drivetrain = "Derivetrain",
+    msrp = "MSRP"
+  ) %>%
+  tab_footnote(
+    footnote = "Prices in USD",
+    locations = cells_column_labels(vars(msrp))
+  ) %>%
+  tab_footnote(
+    footnote = "AWD = All Wheel Drive, RWD = Real Wheel Drive.",
+    locations = cells_column_labels(vars(drivetrain))
+  ) %>%
+  opt_footnote_marks(marks = "letters")
+  
+```
+
+4. An sp500 example
+
+```{r}
+# Define the start and end dates for the data range
+start_date <- "2010-06-02"
+end_date <- "2010-06-15"
+
+# The HTML decimal references for the black
+# up- and down-pointing triangles are: #9650 and #9660;
+# use an in-line style to apply color
+up_arrow <- "<span style=\"color:green\">&#9650;</span>"
+down_arrow <- "<span style=\"color:red\">&#9660;</span>"
+
+gt_dbl <- sp500 %>%
+  dplyr::filter(date >= start_date & date <= end_date) %>%
+  dplyr::select(-adj_close) %>%
+  gt()
+
+gt_dbl %>%
+  tab_header(
+    title = "S&P 500",
+    subtitle = glue::glue("{start_date} to {end_date}")
+  ) %>%
+  fmt_date(
+    columns = vars(date),
+    date_style = 7
+  ) %>% 
+  fmt_currency(
+    columns = vars(open, high, low, close),
+    currency = "USD"
+  ) %>%
+  fmt_number(
+    columns = vars(volume),
+    scale_by = 1 / 1E9,
+    pattern = "{x}B"
+  ) %>%
+  text_transform(
+    locations = cells_body(
+      columns = "close",
+      rows = open < close
+    ),
+    fn = function(x) paste(x, up_arrow)
+  ) %>%
+  text_transform(
+    locations = cells_body(
+      columns = "close",
+      rows = open > close
+    ),
+    fn = function(x) paste(x, down_arrow)
+  ) %>%
+  cols_label(
+    date = "Date",
+    open = "Open",
+    high = "High",
+    low = "Low",
+    close = "Close",
+    volume = "Volume"
+  )
+
+
+```
+
+5. a pizzaplace example
+
+```{r}
+
+# create a gt table based on a preprocessed `pizzaplace`
+
+gt_tbl <- pizzaplace %>%
+  group_by(type, size) %>%
+  summarize(revenue = sum(price),
+            sold = n()) %>%
+  gt(rowname_col = "size")
+
+gt_tbl %>%
+  tab_header("Pizza Sold in 2015") %>%
+  fmt_currency(
+    columns = vars(revenue),
+    currency = "USD",
+    decimals = 0
+  ) %>%
+  summary_rows(
+    groups = TRUE,
+    columns = vars(sold),
+    fns = list(Total = "sum"),
+    formatter = fmt_number,
+    decimals = 0,
+    use_seps = TRUE
+  ) %>%
+  summary_rows(
+    groups = TRUE,
+    columns = vars(revenue),
+    fns = list(Total = "sum"),
+    formatter = fmt_number,
+    decimals = 0,
+    use_seps = TRUE
+  ) %>%
+  tab_options(
+    summary_row.background.color = "#ACEACE",
+    row_group.background.color = "#FFEFDB"
+  )
+  
+
+```
+
+
+6. An exibble Example
+
+```{r}
+
+gt_tbl <- exibble %>%
+  gt(
+    rowname_col = "row",
+    groupname_col = "group"
+  )
+
+gt_tbl %>%
+  fmt_number(
+    columns = vars(num),
+    decimals = 2
+  ) %>%
+  fmt_date(
+    columns = vars(date),
+    date_style = 6
+  ) %>% 
+  fmt_currency(
+    columns = vars(currency),
+    currency = "EUR"
+  ) %>%
+  tab_options(
+    column_labels.font.size = "small",
+    table.font.size = "small",
+    row_group.font.size = "small",
+    data_row.padding = px(3)
+  )
+
+```
+
+### Case study: gtcars
+
+```{r}
+
+dplyr::glimpse(gtcars)
+
+```
+reduce 47 example to only 8
+
+```{r}
+
+gtcars_8 <- gtcars %>%
+  group_by(ctry_origin) %>%
+  top_n(2) %>%
+  ungroup() %>%
+  filter(ctry_origin != "United Kingdom")
+
+glimpse(gtcars_8)
+
+```
+
+display table from this dataset, discard and highlight some info
+
+1. putting the cars into characteristic groups, by the car manufacture;s country of origin
+
+```{r}
+# to arrange observation group together by country of origin, we need to use group_by options
+gtcars_8 %>%
+  group_by(ctry_origin) %>%
+  gt()
+
+# getting the row groups into prefered order by using arrange function
+
+gtcars_8 %>%
+  group_by(ctry_origin) %>%
+  arrange(mfr, desc(msrp)) %>%
+  gt()
+
+# use factor leves to get a more particular ordering with arrange. first we change order of country by our own preference and then arrange by mfr in a descend order
+order_countries <- c("Germany", "Italy", "United States", "Japan")
+
+gtcars_8 %>%
+  arrange(factor(ctry_origin, levels = order_countries), mfr, desc(msrp)) %>%
+  group_by(ctry_origin) %>%
+  gt()
+
+
+# reorder the table rows by our specific ordering of groups
+
+tab <- gtcars_8 %>%
+  arrange(factor(ctry_origin, levels = order_countries), mfr, desc(msrp)) %>%
+  mutate(car = paste(mfr, model)) %>%
+  select(-mfr, -model) %>%
+  group_by(ctry_origin) %>%
+  gt(rowname_col = "car")
+
+tab
+
+```
+
+Hiding and moving some columns
+
+why not just remove this columns, in some case you will need variables for conditional statements within **gt** but won't want to display them in the end.
+
+```{r}
+
+# Use a few `cols_*()` functions to hide and move columns
+
+tab_1 <- tab %>%
+  cols_hide(columns = vars(drivetrain, bdy_style)) %>%
+  cols_move(
+    columns = vars(trsmn, mpg_c, mpg_h),
+    after = vars(trim)
+  )
+
+tab_1
+
+```
+
+putting columns into groups
+
+sometimes useful to arrange variables/columns into groups by using spanner column labels.
+
+```{r}
+# put the first three columsn under a spanner column with the label 'Performance'
+tab_2 <- tab_1 %>%
+  tab_spanner(label = "Performance",
+              columns = vars(mpg_c, mpg_h, hp, hp_rpm, trq, trq_rpm))
+
+
+tab_2
+```
+
+Merging columns together and labeling them
+
+```{r}
+# perform three column merges to better present MPG, HP, and torque; relabel all the remaining columns for a nicer-looking presentation
+
+tab_3 <- tab_2  %>%
+  cols_merge(
+    vars(mpg_c, mpg_h),
+    hide_columns = vars(mpg_h),
+    pattern = "{1}c<br>{2}h"
+    ) %>%
+  cols_merge(
+    vars(hp, hp_rpm),
+    hide_columns = vars(hp_rpm),
+    pattern = "{1}<br>@{2}rpm"
+  ) %>%
+  cols_merge(
+    vars(trq, trq_rpm),
+    hide_columns = vars(trq_rpm),
+    pattern = "{1}<br>@{2}rpm"
+  ) %>%
+  cols_label(
+    mpg_c = "MPG",
+    hp = "HP",
+    trq = "Torque",
+    year = "Year",
+    trim = "Trim",
+    trsmn = "Transmission",
+    msrp = "MSRP"
+  )
+
+tab_3
+
+```
+
+Using formatter functions
+
+```{r}
+
+# format the msrp column to USD currency
+
+tab_4 <- tab_3 %>%
+  fmt_currency(columns = vars(msrp),
+               currency = "USD",
+               decimals = 0)
+
+
+tab_4
+```
+
+column Alignment and style chagnes
+
+```{r}
+
+# Center-align three columns in the gt table and modify the text size of a few columns of data
+
+tab_5 <- tab_4 %>%
+  cols_align(
+    align = "center",
+    columns = vars(mpg_c, hp, trq)
+  ) %>%
+  tab_style(
+    style = cell_text(size = px(12)),
+    locations = cells_body(
+      columns = vars(trim, trsmn, mpg_c, hp, trq))
+  )
+
+tab_5
+
+```
+
+
+Text transforms
+
+```{r}
+
+tab_6 <- tab_5 %>%
+  text_transform(
+    locations = cells_body(columns = vars(trsmn)),
+    fn = function(x) {
+
+      # The first character of `x` always
+      # indicates the number of transmission speeds
+      speed <- substr(x, 1, 1)
+
+      # We can carefully determine which transmission
+      # type we have in `x` with a `dplyr::case_when()`
+      # statement
+      type <-
+        dplyr::case_when(
+          substr(x, 2, 3) == "am" ~ "Automatic/Manual",
+          substr(x, 2, 2) == "m" ~ "Manual",
+          substr(x, 2, 2) == "a" ~ "Automatic",
+          substr(x, 2, 3) == "dd" ~ "Direct Drive"
+        )
+
+      # Let's paste together the `speed` and `type`
+      # vectors to create HTML text replacing `x`
+      paste(speed, " Speed<br><em>", type, "</em>")
+    }
+  )
+
+tab_6
+
+```
+
+table header: title and subtitle
+
+```{r}
+
+tab_7 <- tab_6 %>%
+  tab_header(
+    title = md("The Cars of **gtcars**"),
+    subtitle ="There are some fine automobiles"
+  )
+
+tab_7
+
+```
+
+Adding a source citation
+
+```{r}
+
+tab_8 <- tab_7 %>%
+  tab_source_note(
+    source_note = md("Source: Various pages within the Edmonds Website")
+  )
+
+tab_8
+
+```
+
+Using complete grcars table and adding footnotes
+
+1. Identifying the car with the best gas milage (city)
+2. Identifying the car with the highest horsepower
+3. Stating the currency of the MSRP
+
+```{r}
+best_gas_milage_city <- gtcars %>%
+  arrange(desc(mpg_c)) %>%
+  slice(1) %>%
+  mutate(car = paste(mfr, model)) %>%
+  pull(car)
+
+# use dplyr function to get the car witht he highest horsepower this will be used to target the correct cell for a footnote
+
+highest_horsepower <- gtcars %>%
+  arrange(desc(hp)) %>%
+  slice(1) %>%
+  mutate(car = paste(mfr, model)) %>%
+  pull(car)
+
+# create a display table with gtcars, using all of the previous statement piped together + addiitonal 'tab_footnotes' stmts
+
+tab <- gtcars %>%
+  arrange(factor(ctry_origin, levels = order_countries),
+          mfr, desc(msrp)) %>%
+  mutate(car = paste(mfr, model)) %>%
+  select(-mfr, -model) %>%
+  group_by(ctry_origin) %>%
+  gt(rowname_col = "car") 
+
+
+tab %>%
+  cols_hide(columns = vars(drivetrain, bdy_style)) %>%
+  cols_move(
+    columns = vars(trsmn, mpg_c, mpg_h),
+    after = vars(trim)
+  ) %>%
+  tab_spanner(
+    label = "Performance",
+    columns = vars(mpg_c, mpg_h, hp, hp_rpm, trq, trq_rpm)
+  ) %>%
+  cols_merge(
+    vars(mpg_c, mpg_h),
+    hide_columns = vars(mpg_h),
+    pattern = "{1}c<br>{2}h"
+  ) %>%
+  cols_merge(
+    vars(hp, hp_rpm),
+    hide_columns = vars(hp_rpm),
+    pattern = "{1}<br>@{2}rpm"
+  ) %>%
+  cols_merge(
+    vars(trq, trq_rpm),
+    hide_columns = vars(trq_rpm),
+    pattern = "{1}<br>@{2}rpm"
+  ) %>%
+   cols_label(
+    mpg_c = "MPG",
+    hp = "HP",
+    trq = "Torque",
+    year = "Year",
+    trim = "Trim",
+    trsmn = "Transmission",
+    msrp = "MSRP"
+  ) %>%
+  fmt_currency(
+    columns = vars(msrp),
+    currency = "USD",
+    decimals = 0
+  ) %>%
+  cols_align(
+    align = "center",
+    columns = vars(mpg_c, hp, trq)
+  ) %>%
+  tab_style(
+    style = cell_text(size = px(12)),
+    locations = cells_body(
+      columns = vars(trim, trsmn, mpg_c, hp, trq)
+    )
+  ) %>%
+  text_transform(
+    locations = cells_body(columns = vars(trsmn)),
+    fn = function(x) {
+
+      speed <- substr(x, 1, 1)
+
+      type <-
+        dplyr::case_when(
+          substr(x, 2, 3) == "am" ~ "Automatic/Manual",
+          substr(x, 2, 2) == "m" ~ "Manual",
+          substr(x, 2, 2) == "a" ~ "Automatic",
+          substr(x, 2, 3) == "dd" ~ "Direct Drive"
+        )
+
+      paste(speed, " Speed<br><em>", type, "</em>")
+    }
+  ) %>%
+  tab_header(
+    title = md("The Cars of **gtcars**"),
+    subtitle = "These are some fine automobiles"
+  ) %>%
+  tab_source_note(
+    source_note = md(
+      "Source: Various pages within the Edmonds website.")
+  ) %>%
+  tab_footnote(
+    footnote = md("Best gas mileage (city) of all the **gtcars**"),
+    locations = cells_body(
+      columns = vars(mpg_c),
+      rows = best_gas_milage_city
+    )
+  ) %>%
+    tab_footnote(
+    footnote = md("The highest horsepower of all the **gtcars**."),
+    locations = cells_body(
+      columns = vars(hp),
+      rows = highest_horsepower)
+  ) %>%
+  tab_footnote(
+    footnote = "All prices in U.S. dollars (USD).",
+    locations = cells_column_labels(columns = vars(msrp))
+  )
 
 
 
@@ -32,8 +1036,7 @@ codelist %>%
 
 
 
-
-
+https://gt.rstudio.com/index.html
 
 
 

@@ -1,0 +1,41 @@
+---
+title: "Export R package - Turtorial"
+author: "Yifei Liu"
+date: "12/3/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+library(export)
+library(effects)
+
+```
+
+
+```{r}
+
+fit = lm(prestige ~ type + income * education ,data = Prestige)
+x = plot(Effect(c("income", "education"), fit), multiline = T, ci.style = "bands")
+
+
+```
+
+```{r}
+
+# graph2ppt(x, file = "test.pptx") output a pptx graph module
+
+```
+
+
+
+
+Reference: 
+[export version 0.2.2 Beta](https://github.com/tomwenseleers/export)
+
+

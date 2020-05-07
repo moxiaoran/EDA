@@ -1,0 +1,278 @@
+---
+title: "COVID 19 Open Research Dataset"
+author: "Yifei Liu"
+date: "3/24/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+[David Robinson covid-19 open research dataset analysis](https://www.youtube.com/watch?v=-5HYdBq_PTM)
+
+```{r}
+
+library(tidyverse)
+library(tidytext)
+library(jsonlite)
+library(spacyr)
+library(ggraph)
+library(igraph)
+library(widyr) # install_github("dgrtwo/widyr")
+detach("package:dplyr", unload = TRUE)
+library(dplyr)
+theme_set(theme_minimal())
+
+
+metadata <- read_csv("/Users/yifeiliu/Documents/R/data/EDA/Blog_draft/CORD-19-research-challenge/metadata.csv")
+```
+
+
+
+Extracting text from all papers
+
+
+```{r}
+
+json_objects <- dir("/Users/yifeiliu/Documents/R/data/EDA/Blog_draft/CORD-19-research-challenge/comm_use_subset/comm_use_subset", full.names = TRUE) %>%
+  map(read_json)
+
+json_tbl <- tibble(json = json_objects) 
+
+article_data <- json_tbl %>%
+  hoist(json, paper_id = "paper_id",
+        title = c("metadata", "title"),
+        author = c("metadata", "authors"),
+        abstract = c("abstract", function(.) str_c(map_chr(., "text"), collapse = "\n")),
+        body_text = c("body_text", function(.) str_c(map_chr(., "text"), collapse = "\n")),
+        bib_entries = "bib_entries") %>%
+  select(- json) %>%
+  filter(!is.na(abstract))
+
+```
+
+Pulling out details from the article references
+
+
+```{r}
+#article_references <-article_data %>%
+#  select(paper_id, bib_entries) %>%
+#  sample_n(500) %>%
+#  unnest(bib_entries) %>%
+#  unnest_wider(bib_entries)
+
+article_references <- article_data %>%
+  select(paper_id, bib_entries) %>%
+  unnest(bib_entries) %>%
+  hoist(bib_entries, title = "title", venue = "venue", year = "year")
+
+
+```
+
+### EDA
+
+```{r}
+
+title_words <- article_data %>%
+  unnest_tokens(word, title) %>%
+  count(word, sort = T) %>%
+  anti_join(stop_words, by = "word")
+
+
+title_words %>%
+  head(20) %>%
+  mutate(word = fct_reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Words that appear in many titles")
+  
+  
+```
+
+
+```{r}
+
+
+abstract_words <- article_data %>%
+  unnest_tokens(word, abstract) %>%
+  count(word, sort = T) %>%
+  anti_join(stop_words, by = "word")
+
+
+abstract_words %>%
+  head(20) %>%
+  mutate(word = fct_reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Words that appear in many abstract")
+  
+
+
+```
+
+
+```{r}
+
+spacy_initialize("en_core_sci_sm", python_executable = "/Users/yifeiliu/opt/anaconda3/envs/yourenvname/bin/python3")
+
+
+
+```
+
+TidyText can take a custome tokenization function 
+
+
+```{r}
+
+spacy_extract_entity("Myeloid derived suppressor cells (MDSC) are immature 
+myeloid cells with immunosuppressive activity. 
+They accumulate in tumor-bearing mice and humans 
+with different types of cancer, including hepatocellular 
+carcinoma (HCC).")
+
+
+tokenize_scispacy_entities <- function(text) {
+ spacy_extract_entity(text) %>%
+    group_by(doc_id) %>%
+    nest() %>%
+    pull(data) %>%
+    map("text") %>%
+    map(str_to_lower)
+}
+
+
+tokenize_scispacy_entities(c("Myeloid derived suppressor cells (MDSC) are immature 
+myeloid cells with immunosuppressive activity.", "They accumulate in tumor-bearing mice and humans with different types of cancer, including hepatocellular 
+carcinoma (HCC)."))
+
+tokenizers::tokenize_words(c("Myeloid derived suppressor cells (MDSC) are immature 
+myeloid cells with immunosuppressive activity.", "They accumulate in tumor-bearing mice and humans with different types of cancer, including hepatocellular 
+carcinoma (HCC)."))
+
+ abstract_entities <- article_data %>%
+  filter(nchar(abstract) > 30) %>%
+  select(paper_id, title, abstract) %>%
+  unnest_tokens(entity, abstract, token = tokenize_scispacy_entities)
+
+```
+
+
+```{r}
+
+abstract_entities %>%
+  count(entity, sort = TRUE) %>%
+  head(30) %>%
+  mutate(entity = fct_reorder(entity, n)) %>%
+  ggplot(aes(entity, n)) +
+  geom_col() +
+  coord_flip()
+
+```
+
+```{r}
+
+article_data %>%
+  filter(str_detect(abstract, "COVID-19")) %>%
+  pull(paper_id)
+
+```
+
+
+
+```{r}
+
+
+entity_correlations <- abstract_entities %>%
+  add_count(entity) %>%
+  filter(n >= 100) %>%
+  pairwise_cor(entity, paper_id, sort = T) %>%
+  head(400)
+
+set.seed(1234)
+
+entity_correlations %>%
+  graph_from_data_frame() %>%
+  ggraph(layout = "fr") +
+  geom_edge_link(aes(edge_alpha = correlation)) +
+  geom_node_point() +
+  geom_node_text(aes(label = name), repel = T) +
+  theme_void() +
+  theme(legend.position = "none") +
+  labs(title = "Entites that often appear together in abstracts",
+       subtitle = "Based on the scispacy Named Entity Reognition model")
+
+```
+
+
+### Reference
+
+
+```{r}
+
+num_articles = n_distinct(article_references$paper_id)
+
+article_references %>%
+  filter(!str_detect(title, "Submit your next|This article|Springer Nauture remains|Publisher's Note")) %>%
+  count(title = str_trunc(title, 100), srot = TRUE) %>%
+  mutate(percent = n / num_articles) %>%
+  head(20) %>%
+  mutate(title = fct_reorder(title, percent)) %>%
+  ggplot(aes(title, percent)) +
+  geom_col() +
+  scale_y_continuous(labels = scales::percent_format()) +
+  coord_flip() +
+  labs(title = "What are the most referenced article in the COVID-19 dataset?",
+       subtitle = glue::glue("Based on the {scales::comma(num_articles)} open for commerical use that references"))
+
+```
+
+```{r}
+
+referenced_artciles <- article_references %>%
+  filter(!is.na(year)) %>%
+  distinct(title, year)
+
+year_totals <- referenced_artciles %>%
+  count(year = 2 * (year %/% 2), name = "total")
+
+
+referenced_artcles_entites <- referenced_artciles %>%
+  unnest_tokens(word, title)
+
+by_entity_year <- referenced_artcles_entites %>%
+  count(year = 2 * (year %/% 2), word) %>%
+  filter(year >= 1900, year <= 20202)  %>%
+  inner_join(year_totals, by = "year") %>%
+  mutate(percent = n / total)
+
+by_entity_year %>%
+  filter(word %in% c("bat", "bats")) %>%
+  ggplot(aes(year, n)) +
+  geom_col() +
+  labs(title = "How much do referenced papers refer to bats in the title?")
+
+```
+
+
+
+
+
+Observation: 
+
+- only 18 articles abstract contain the term **covid-19** and the term **covid-19** only appear 42 times in the abstracts
+
+
+
+
+
+
+
+
+
+
+
+

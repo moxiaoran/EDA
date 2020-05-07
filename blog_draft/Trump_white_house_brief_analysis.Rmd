@@ -1,0 +1,50 @@
+---
+title: "Trump White House brief & speech analysis"
+author: "Yifei Liu"
+date: "3/27/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Purpose of this article Go through Trump White House speech, do some basic text analysis, such as plot world cloud and network graph. Try to identity what kind of questions will irritate him, by inner join with sentiment database. 
+
+```{r}
+library(tidyverse)
+library(rvest)
+theme_set(theme_minimal())
+
+```
+
+### Get the data
+
+```{r}
+
+pages <- c("https://www.whitehouse.gov/briefings-statements/",
+         paste("https://www.whitehouse.gov/briefings-statements/page/", 2:30, "/", sep = ""))
+
+x <- read_html(pages[1]) %>% html_nodes(".briefing-statement__title a") %>% html_attr('href') 
+
+read_html(x[2]) %>% html_nodes(".editor") %>% html_text() %>% str_remove_all("\t") %>% str_remove("\n\n\nShare:\n\n\n\nshare-this-page-on-facebook\n\n\n\nshare-this-page-on-twitter\n\n\n\ncopy-url-to-your-clipboard\n\n\n\nAll News\n\n")
+```
+
+
+### EDA
+
+
+
+### Result
+
+
+
+
+
+
+
+
+
+
+

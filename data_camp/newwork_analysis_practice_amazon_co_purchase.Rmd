@@ -1,0 +1,105 @@
+---
+title: 'Network Analysis: Practice 1 - Amazon co purchase'
+author: "Yifei Liu"
+date: "11/29/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# load packages
+library(tidyverse)
+library(igraph)
+library(ggraph)
+library(visNetwork)
+library(reticulate)
+use_python("/usr/bin/local/python3")
+theme_set(theme_minimal())
+
+detach("package:dplyr", unload = TRUE)
+library(dplyr)
+
+```
+
+
+## Clean files
+
+Take a look at amazon co purchase info
+
+```{r}
+
+file <- readLines("/Users/yifeiliu/Documents/R/data/EDA/datacamp/network/amazon-meta-sample.txt")
+head(file, 20)
+
+```
+
+So as we can see the dataset in fairly structured. I just start to learn Python recently so I decided to use python to clean this dataset. Here is the [link](http://thoughtsonroad.blogspot.com/2017/06/visualize-co-purchasing-network-of.html?view=classic) I find very useful to help me clean this dataset. 
+
+```{python eval = FALSE}
+fname = "amazon-meta.txt"
+
+with open(fname, encoding = "utf8") as f:
+    content = f.readlines()
+
+content = [x.strip() for x in content]
+
+file = open("clean_file.txt", "w", encoding = "utf8")
+
+previouslines = ["id", "title", "group","salesrank", "categories",
+                 "totalrate", "avgreview"]
+
+for line in content:
+    lines = line.split(':', 1) # prevent title split into multiple
+    if lines[0] == "Id":
+        if(len(previouslines) == 7):
+            for component in previouslines[0:6]:
+                file.write(component)
+                file.write(",")
+            file.write(previouslines[6])
+            file.write("\n")
+        previouslines = []
+        previouslines.append(lines[1].strip())
+
+    if lines[0] == "title":
+        previouslines.append(lines[1].strip())
+
+    if lines[0] == "group":
+        previouslines.append(lines[1].strip())
+
+    if lines[0] == "salesrank":
+        previouslines.append(lines[1].strip())
+
+    if lines[0] == "categories":
+        previouslines.append(lines[1].strip())
+
+    if lines[0] == "reviews":
+        previouslines.extend([lines[1].split(": ")[1].split(' ')[0].strip(),
+                               lines[1].split(": ")[-1].split(' ')[-1].strip()])
+file.close()
+
+```
+
+now we can read this clean version file into R to perform visualization. 
+
+```{r echo = F, message = F, warning = F}
+amazon_co <- read_csv("/Users/yifeiliu/Documents/R/data/EDA/datacamp/network/clean_file.txt")
+
+```
+
+
+
+Reference: 
+[Stanford Large Network Dataset Collection](http://snap.stanford.edu/data/index.html)
+[Amazon product co-purchasing network, June 01 2003](http://snap.stanford.edu/data/amazon0601.html)
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,56 @@
+---
+title: "How low can you row puzzle"
+author: "Yifei Liu"
+date: "4/6/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+https://fivethirtyeight.com/features/how-low-can-you-roll/
+
+```{r}
+
+library(tidyverse)
+detach("package:dplyr", unload = TRUE)
+library(dplyr)
+theme_set(theme_minimal())
+
+set.seed(2020)
+
+sim <- tibble(roll = sample(0:9, 1e7, replace = TRUE)) %>%
+  mutate(group = lag(cumsum(roll == 0), default = 0)) %>%
+  group_by(group) %>%
+  filter(roll <= cummin(roll))
+
+scores <- sim %>%
+  mutate(decimal = roll * 10 ^ -row_number()) %>%
+  summarize(score = sum(decimal))
+  
+
+
+```
+
+
+
+```{r}
+scores %>%
+  summarize(mean(score))
+
+scores %>%
+  ggplot(aes(score)) +
+  geom_histogram(binwidth = 0.001) +
+  scale_x_continuous(breaks = seq(0, 1, 0.1))
+
+
+```
+
+
+
+
+
+
+
+

@@ -1,0 +1,49 @@
+---
+title: "Major Asset performance during past ten years"
+author: "Yifei Liu"
+date: "1/16/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(tidyquant)
+detach("package:dplyr", unload = TRUE)
+library(dplyr)
+
+```
+
+```{r}
+asset_class <- tibble(name = c("EM", "ERITs", "mid Cap", "small cap", "large cap", "developed market", "TIPS", "Bonds", "comdity", "cash"),
+                      symol = c("EEM", "VNQ", "MDY", "SLY", "SPY", "EFA", "TIP", "AGG", "DJP", "BIL"))
+
+Ra <- asset_class$symol %>%
+  tq_get(get = "stock.price",
+         from = "2010-01-01",
+         to = "2020-01-01") %>%
+  group_by(symbol) %>%
+  tq_transmute(select = adjusted,
+               mutate_fun = periodReturn,
+               period = "yearly",
+               col_rename = "Ra")
+
+Ra
+wts <- rep(0.1, 10)
+
+equal_weight <- Ra %>%
+  tq_portfolio(assets_col = symbol,
+               returns_col = Ra,
+               weights = wts,
+               col_rename = "Ra",
+               rebalance_on = "years")%>%
+  mutate(symbol = "EW")
+
+bind_rows(Ra, equal_weight) 
+
+```
+
+

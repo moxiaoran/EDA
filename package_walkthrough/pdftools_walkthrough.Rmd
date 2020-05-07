@@ -1,0 +1,120 @@
+---
+title: "pdftools walkthrough"
+author: "Yifei Liu"
+date: "2/21/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(pdftools)
+library(tidyverse)
+library(glue)
+theme_set(theme_minimal())
+
+```
+
+# Example 1: Basic
+
+[Extracting data from a PDF into R](https://rstudio-pubs-static.s3.amazonaws.com/415060_553527fd13ed4f30aae0f1e4483aa970.html)
+
+
+1. create a new file
+2. Load packages
+3. load pdf
+```{r}
+pdf <- pdf_text("/Users/yifeiliu/Documents/R/data/EDA/package_walkthrough/oregon_grass_and_legume_seed_crops_preliminary_estimates_2017.pdf") %>%
+  readr::read_lines()
+
+pdf
+
+
+```
+
+
+```{r}
+(file_data_raw <- pdf[-c(1:3, 6:8, 20:35)])
+
+(file_data_raw[3:13] %>%
+    str_squish() %>%
+    strsplit(split = " ") -> file_data)
+
+
+var_lines <- c("Species", "Arceage", "Yield", "Production", "Price", "Value")
+
+file_data[[6]] <- c("Orchard", "grass", "15,190","1,046","15,889","225.00","35,750")
+
+(df <- plyr::ldply(file_data))
+
+df %>%
+  unite(V1.2, V1, V2, sep = "_") %>%
+  setNames(var_lines) %>%
+  mutate_at(var_lines[2:6], parse_number)
+
+```
+
+summary: very basic example, does't involve a lot of regular expression and not very complicated. Don't involve issues such as contain missing value, (make str_squish difficult), one value occupied more than one row, (such as long country name, when use read_lines, it split one entry into three sometimes.), etc
+
+
+# Example 2: Advance
+
+
+Download files
+
+```{r}
+library(ggthemes)
+country <- c("lux", "fra", "deu", "usa", "prt", "gbr")
+
+url <- "http://www.who.int/diabetes/country-profiles/{country}_en.pdf?ua=1"
+
+```
+
+```{r}
+
+(urls <- glue(url))
+
+pdf_names <- glue("/Users/yifeiliu/Documents/R/data/EDA/package_walkthrough/report_{country}.pdf")
+
+walk2(urls, pdf_names, download.file, mode = "wb")
+
+
+```
+
+read files
+
+```{r}
+
+raw_text <- map(pdf_names, pdf_text)
+
+raw_text[[1]]
+
+```
+
+```{r}
+
+clean_table <- 
+
+```
+
+```{r}
+x_1 <- str_split(raw_text[[1]], "\n", simplify = T)
+x_2 <- x_1[1, 1] %>%
+  stringr::str_squish() %>%
+  stringr::str_extract(".+?(?=\\sTotal)")
+
+x_1[1, 1] %>%
+  stringr::str_squish() %>%
+  stringr::str_extract(".+?(?=\\sTotal)")
+```
+
+
+
+
+
+
+
+

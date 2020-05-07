@@ -1,0 +1,123 @@
+---
+title: "100% Stacked Chicklets"
+author: "Yifei Liu"
+date: "2/21/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+[100% Stacked Chicklets](https://rud.is/b/2019/09/27/100-stacked-chicklets/)
+
+```{r}
+
+library(hrbrthemes) # CRAN or fav social coding site using hrbrmstr/pkgname
+library(ggchicklet) # fav social coding site using hrbrmstr/pkgname
+library(tidyverse)
+detach("package:dplyr", unload = TRUE)
+library(dplyr)
+
+
+```
+
+```{r}
+f500_dmarc <- read_csv("https://rud.is/dl/f500-industry-dmarc.csv.gz", col_types = "cc")
+
+f500_dmarc
+
+dmarc_levels <- c("No DMARC", "None", "Quarantine", "Reject")
+dmarc_cols <- set_names(c(ft_cols$slate, "#a6dba0", "#5aae61", "#1b7837"), dmarc_levels)
+
+```
+
+
+
+```{r}
+
+(dmarc_summary <- count(f500_dmarc, industry, p))
+
+(dmarc_summary %>%
+  filter(p != "No DMARC") %>%
+  count(industry, wt = n, sort = T) -> industry_levels)
+
+```
+
+```{r}
+
+dmarc_summary %>%
+  mutate(p = factor(p, levels = rev(dmarc_levels)),
+         industry = factor(industry, rev(industry_levels$industry))) %>%
+  ggplot(aes(industry, n)) +
+  geom_chicklet(aes(fill = p)) +
+  scale_fill_manual(name = NULL, values = dmarc_cols) +
+  scale_y_continuous(expand = c(0, 0), position = "right") +
+  coord_flip() +
+  labs(
+    x = NULL, y = NULL,
+    title = "DMARC Status of Fortune 500 (2007 list; 2018 Measurement) Primary Email Domains"
+  ) +
+  theme_ipsum_rc(grid = "x") +
+  theme(legend.position = "top")
+
+```
+
+100 % width
+
+```{r}
+
+dmarc_summary %>%
+  mutate(p = factor(p, levels = rev(dmarc_levels)),
+         industry = factor(industry, rev(industry_levels$industry))) %>%
+  ggplot(aes(industry, n)) +
+  geom_chicklet(aes(fill = p), position = position_fill()) +
+  scale_fill_manual(name = NULL, values = dmarc_cols) +
+  scale_y_continuous(expand = c(0, 0), position = "right") +
+  coord_flip() +
+  labs(
+    x = NULL, y = NULL,
+    title = "DMARC Status of Fortune 500 (2007 list; 2018 Measurement) Primary Email Domains"
+  ) +
+  theme_ipsum_rc(grid = "x") +
+  theme(legend.position = "top")
+
+
+```
+
+
+```{r}
+(dmarc_summary %>%
+  group_by(industry) %>%
+  mutate(pct = n / sum(n)) %>%
+  ungroup() %>%
+  filter(p != "No DMARC") %>%
+  count(industry, wt = pct, sort = T) -> industry_levels)
+
+
+```
+
+```{r}
+
+dmarc_summary %>%
+  mutate(p = factor(p, levels = rev(dmarc_levels)),
+         industry = factor(industry, levels = rev(industry_levels$industry))) %>%
+  ggplot(aes(industry, n)) +
+  geom_chicklet(aes(fill = p), position = position_fill(reverse = T)) +
+  scale_fill_manual(name = NULL, values = dmarc_cols) +
+  scale_y_continuous(expand = c(0, 0.001), position = "right") +
+  coord_flip() +
+   labs(
+    x = NULL, y = NULL,
+    title = "DMARC Status of Fortune 500 (2007 list; 2018 Measurement) Primary Email Domains"
+  ) +
+  theme_ipsum_rc(grid = "X") +
+  theme(legend.position = "top")
+
+```
+
+
+
+
+
+
