@@ -1,0 +1,48 @@
+---
+title: "Fed employment data"
+author: "Yifei Liu"
+date: "5/27/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(tidyverse)
+library(rvest)
+detach("package:dplyr", unload = TRUE)
+library(dplyr)
+theme_set(theme_minimal())
+
+
+```
+
+
+```{r}
+
+employment_link <- read_html("https://www.opm.gov/policy-data-oversight/data-analysis-documentation/federal-employment-reports/historical-tables/executive-branch-civilian-employment-since-1940/")
+
+
+emp_data <- employment_link %>%
+  html_node(".PaddingSmaller") %>% 
+  html_table(fill = TRUE) %>%
+  janitor::clean_names() %>%
+  filter(fiscal_year != "Fiscal Year") %>%
+  mutate_if(is.character, parse_number) %>%
+  select_at(vars(-starts_with("civilian_agencies_"))) 
+
+
+emp_data %>%
+  filter(fiscal_year > 1950) %>%
+  ggplot(aes(fiscal_year, total_executive_branch)) +
+  geom_line() +
+  scale_y_continuous(labels = scales::comma) +
+  expand_limits(x = 2020)
+
+
+```
+
+
