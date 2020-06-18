@@ -346,6 +346,48 @@ plot1 +
 
 ```
 
+```{r}
+
+plot1 +
+  transition_states(states = rating,
+                    transition_length = 3,
+                    state_length = 1,
+                    wrap = F)
+
+```
+
+```{r}
+
+plot1 +
+  transition_states(states = rating) +
+  ease_aes("bounce-in")
+
+```
+
+```{r}
+
+plot1 +
+  labs(subtitle = "{closest_state}") +
+  transition_states(states = rating)  
+
+#reference: https://cran.r-project.org/web/packages/gganimate/vignettes/gganimate.html
+```
+
+
+```{r}
+
+plot1B <- plot1 +
+  geom_jitter(alpha = .1, width = 5) 
+
+plot1B +
+  labs(subtitle = "{closest_state}") +
+  transition_states(states = rating) +
+  shadow_wake(wake_length = .5)
+
+```
+
+
+
 
 
 
