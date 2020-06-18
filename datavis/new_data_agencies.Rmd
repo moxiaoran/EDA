@@ -1,0 +1,63 @@
+---
+title: "new_deal_agencies"
+author: "Yifei Liu"
+date: "6/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(tidyverse)
+library(rvest)
+theme_set(theme_minimal())
+
+```
+
+
+```{r}
+# xpath method
+read_html("https://en.wikipedia.org/wiki/Alphabet_agencies") %>%
+  html_nodes(xpath = '//*[@id="mw-content-text"]/div/table[2]') %>%
+  html_table()
+
+# html nodes table method
+read_html("https://en.wikipedia.org/wiki/Alphabet_agencies") %>%
+  html_nodes("table") %>%
+  .[2] %>%
+  html_table(fill = TRUE)
+  
+read_html("https://en.wikipedia.org/wiki/Alphabet_agencies") %>%
+  html_node('body')
+
+
+
+
+```
+
+
+```{r}
+url = 'https://en.wikipedia.org/wiki/List_of_people_on_banknotes'
+url2 = read_html('https://en.wikipedia.org/wiki/List_of_people_on_banknotes')
+
+sample = url %>%
+  read_html() %>%
+  html_node('body #content #bodyContent #mw-content-text .mw-parser-output table') %>%
+  html_table(fill = TRUE)
+
+sample3 = url %>%
+  read_html() %>%
+  html_nodes(xpath = '//*[@id="mw-content-text"]/div/table[1]') %>%
+  html_table(fill = TRUE)
+```
+
+
+
+
+
+
+
+
