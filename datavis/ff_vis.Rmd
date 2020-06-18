@@ -1,0 +1,202 @@
+---
+title: "ff_data_vis"
+author: "Yifei Liu"
+date: "5/31/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+
+library(tidyverse)
+library(tidyquant)
+library(ggrepel)
+library(ggtext)
+library(readxl)
+library(transformr) # devtools::install_github("thomasp85/transformr")
+detach("package:dplyr", unload = TRUE)
+library(dplyr)
+theme_set(theme_minimal())
+
+```
+
+```{r}
+ff_vol = read_csv("/Users/yifeiliu/Documents/R/data/EDA/datavis/ff_trade_vol.csv") %>%
+  janitor::clean_names() %>%
+  select(date = date, ff = volume_us_billions)%>%
+  mutate(date = mdy(date))
+
+on_bf_vol <- tq_get(x = c("OBFRVOL","EFFRVOL"), 
+                    get = "economic.data") %>%
+  pivot_wider(names_from = symbol, values_from = price) %>%
+  rename(on_bf = OBFRVOL, ff = EFFRVOL)
+
+fund_vol = full_join(on_bf_vol, ff_vol) %>%
+  pivot_longer(-date, names_to = "name", values_to = "vol")
+
+
+fund_vol %>%
+  mutate(time = as.numeric(date) / 365.25 + 1970) %>%
+  ggplot(aes(time, vol, group = name, color = name)) +
+  geom_point(alpha = 0.06) +
+  geom_smooth() +
+  expand_limits(y = 0) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = "<b>Overnight Bank Funding and Effective / Federal Funds Volume</b><br>",
+        subtitle = "Combine FF and EFF data together, since FRED don't provide FF data.<p></span><br>*Unit: Billion of U.S. Dollar*<br></p><p><span style = 'color:red;'>Federal Fund Volume </span> <span style = 'color:blue;'>Overnight Bank Funding Volume</span></p>",
+       y = "", x = "", legend = "",
+       caption = "Data Source: FRED, New York Fed | Yife Liu") +
+  theme(plot.title.position = "plot",
+    plot.title = element_textbox_simple(
+      size = 13,
+      lineheight = 1
+    ),
+    plot.subtitle = element_textbox_simple(
+      size = 10,
+      lineheight = 1,
+      padding = margin(5.5, 5.5, 5.5, 5.5),
+    ),
+    legend.position = "none",
+    plot.caption = element_text(face ="italic"),
+    plot.caption.position = "plot")  + 
+ scale_color_manual(labels = c("Federal Fund", "Overnight Bank Funding"),
+                     values = c("ff" = "red", "on_bf" = "blue"))
+
+
+
+```
+
+
+
+ON RRP and IOER rate
+
+```{r}
+file_name <- dir(path = "/Users/yifeiliu/Documents/R/data/EDA/datavis/RRP", pattern = "rp_rrp_data")
+
+files_path <- paste0("/Users/yifeiliu/Documents/R/data/EDA/datavis/RRP/", file_name)
+
+x = map(files_path, ~read_xls(path =., range = cell_rows(4:5)))
+
+RRP <- do.call(rbind.data.frame, x) %>%
+  janitor::clean_names() %>%
+  select(date = trade_date, RRP = repo_rate_in_percent) %>%
+  mutate(date = ymd(date))
+
+IOER <- tq_get(x = "IOER", get ="economic.data", from = "2010-08-01") %>%
+  mutate(date = ymd(date)) %>%
+  select(date, IOER = price)
+
+fed_corridor <- left_join(RRP, IOER, by = "date") %>%
+  pivot_longer(-date, names_to = "type", values_to = "rate")
+
+IOER_rest <- IOER %>%
+  filter(date > ymd("2018-01-02")) %>%
+  mutate(type = "IOER") %>%
+  rename(rate = IOER)
+
+fed_corridor <- rbind(fed_corridor, IOER_rest)
+
+fed_corridor %>%
+  ggplot(aes(date, rate, color = type)) +
+  geom_line() +
+  labs(title = "<b>ON RRP and IOER Rate</b><br>", x= "", y= "",
+       subtitle = "ON RRP rate released two years after each quarterly transaction period<br></p><p></span><br>*Unit: Percentage*<br></p><p><span style = 'color:red;'>ON RRP </span> <span style = 'color:blue;'>IOER</span></p>", caption = "Data Source: New York Fed, FRED | Author: Yifei Liu") +
+  scale_color_manual(labels = c("Federal Fund", "Overnight Bank Funding"),
+                     values = c("IOER" = "blue", "RRP" = "red")) +
+  theme(plot.title.position = "plot",
+        legend.position = "none",
+        plot.title = element_textbox_simple(
+      size = 13,
+      lineheight = 1,
+      padding = margin(4, 4, 4, 4)
+    ),
+    plot.subtitle = element_textbox_simple(
+      size = 8,
+      lineheight = 0,
+      padding = margin(5.5, 5.5, 5.5, 5.5)
+    ))
+
+```
+
+
+on GCF repo rate volatility vis
+
+```{r}
+
+gcf_rate <- read_xlsx(path = "/Users/yifeiliu/Documents/R/data/EDA/datavis/RRP/gcf_index_graph.xlsx", sheet = 'Data 2005-2019', range = cell_rows(7:3756)) %>%
+  setNames(c("date","MBS", "treasury", "average")) %>%
+  mutate(date = ymd(date), type = "GCF") %>%
+  select(date, rate = treasury, type)
+
+
+rbind(gcf_rate, fed_corridor) %>%
+  filter(date > ymd("2010-08-04")) %>%
+  ggplot(aes(date, rate, color = type)) +
+  geom_line() +
+  scale_color_manual(labels = c("Federal Fund", "Overnight Bank Funding", "GCF"),
+                     values = c("IOER" = "blue", "RRP" = "red", "GCF" = "purple")) +
+  labs(title = "<b>ON RRP, IOER Rate and GCF Repo</b><br>", x= "", y= "",
+       subtitle = "Treasury GCF Repo® Weighted Average Rate<br></p><p></span><br>*Unit: Percentage*<br></p><p><span style = 'color:red;'>ON RRP</span> <span style = 'color:blue;'>IOER</span></span> <span style = 'color:purple;'>GCF</span></p>", caption = "Data Source: New York Fed, FRED, GTCC | Author: Yifei Liu") +
+  theme(plot.title.position = "plot",
+        legend.position = "none",
+        plot.title = element_textbox_simple(
+      size = 13,
+      lineheight = 1,
+      padding = margin(4, 4, 4, 4)
+    ),
+    plot.subtitle = element_textbox_simple(
+      size = 8,
+      lineheight = 0,
+      padding = margin(5.5, 5.5, 5.5, 5.5)
+    ))
+
+
+```
+
+
+## LIBOR Rate
+
+How Basel III break Libor rate US dollar
+
+```{r}
+
+libor_rate <- c("USDONTD156N", "USD1WKD156N", "USD1MTD156N", "USD2MTD156N", "USD3MTD156N", "USD6MTD156N", "USD12MD156N")
+
+libor_frame <- tibble(name = c("USDONTD156N", "USD1WKD156N", "USD1MTD156N", "USD2MTD156N", "USD3MTD156N", "USD6MTD156N", "USD12MD156N"),
+                          list = c("on", "1w", "1m","2m", "3m", "6m", "12m"))
+
+libor_series <- tq_get(x = libor_rate, get = "economic.data", from = "2011-01-01")
+
+x = libor_series %>%
+  full_join(libor_frame, by = c("symbol" = "name")) %>%
+  mutate(date = ymd(date),
+         list = factor(list, levels = c("on", "1w", "1m","2m", "3m", "6m", "12m"))) %>%
+  filter(wday(date) == 5) %>%
+  select(date, price, name = list)
+
+
+x %>%
+  ggplot(aes(date, price, group = date, color = date)) +
+  geom_line() +
+  scale_fill_gradientn(colours = terrain.colors(10)) +
+  transition_time(date) +
+  ease_aes('linear') +
+  labs(title = 'Date: {frame_time}')
+
+
+
+```
+
+ 
+ 
+
+
+
+
+
+
