@@ -3,6 +3,8 @@ title: "gganimate"
 author: "Yifei Liu"
 date: "3/17/2019"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -254,6 +256,98 @@ staticplot = ggplot(gdp_formatted, aes(rank, group = country_name,
   scale_x_reverse()
 
 ```
+
+
+[Animated Plots using ggplot and gganimate](https://www.statworx.com/de/blog/animated-plots-using-ggplot-and-gganimate/)
+
+
+```{r}
+# Load data 
+source_link <- "http://www.stat.columbia.edu/~gelman/arm/examples/speed.dating/Speed%20Dating%20Data.csv"
+df <- data.table::fread(input = source_link)
+
+# Data Plot #1 ------------------------------------------------------------
+# Data structure: one row per pairing of participant and his/her partners 
+# From multiple rows per participant extract unique ratings
+# Rating the importance of several characteristics in a potential partner 
+# Allocating 100 points to 6 characteristics...
+# ... 1) according to the importance as presumed to be felt by peers  
+# ... 2) according to the importance as felt by participants themselves
+df_what_look_for <- df %>% 
+  dplyr::filter(wave %!in% c(6:9)) %>% # here recorded variables diverge
+  dplyr::select(# participants unique ID:
+    iid, 
+    # rating of participant  
+    attr1_1, sinc1_1, intel1_1, fun1_1, amb1_1, shar1_1, 
+    # assumed rating of peers
+    attr4_1, sinc4_1, intel4_1, fun4_1, amb4_1, shar4_1) %>%
+  unique() %>% # only keep one row of unique information per participant
+  tidyr::drop_na() # remove rows with missing values
+
+df_what_look_for_self <- df_what_look_for %>% 
+  dplyr::select(iid, attr1_1, sinc1_1, intel1_1, fun1_1, amb1_1, shar1_1) %>%
+  dplyr::rename(Attractive = attr1_1, 
+                Sincere = sinc1_1, 
+                Intelligent = intel1_1,
+                Fun = fun1_1,
+                Ambitious = amb1_1, 
+                `Shared Interests` = shar1_1) %>%
+  dplyr::mutate_all(as.integer) %>%
+  dplyr::mutate(rating = "Own Ratings") %>%
+  as.data.frame()
+
+# Create data frame with assumed ratings of peers incl. label variable
+df_what_look_for_peers <- df_what_look_for %>% 
+  dplyr::select(iid, attr4_1, sinc4_1, 
+                intel4_1, fun4_1, amb4_1, shar4_1) %>%
+  dplyr::rename(Attractive = attr4_1, 
+                Sincere = sinc4_1, 
+                Intelligent = intel4_1,
+                Fun = fun4_1,
+                Ambitious = amb4_1, 
+                `Shared Interests` = shar4_1) %>%
+  dplyr::mutate_all(as.integer) %>%
+  dplyr::mutate(rating = "Presumed Peer Ratings") %>%
+  as.data.frame()
+
+# Combine data and transform to long format
+df_what_look_for <- bind_rows(df_what_look_for_self,
+                              df_what_look_for_peers) %>%
+  tidyr::gather(key = "variable", 
+                value = "value", 
+                Attractive:`Shared Interests`) 
+
+# To be able to track own rating in all later subsets: add info as added variable 
+# Create lookup table
+df_what_look_for_lookup <- df_what_look_for %>%
+  dplyr::filter(rating == "Own Ratings") %>% 
+  dplyr::rename(own_rating = value) %>%
+  dplyr::select(iid, variable, own_rating)
+
+# Add recurrent information to data frame
+df_what_look_for <- left_join(df_what_look_for, 
+                              df_what_look_for_lookup,
+                              by = c("iid", "variable")) 
+
+
+plot1 <- df_what_look_for %>% 
+  ggplot(aes(value, variable, color = own_rating, size = own_rating, group = iid)) +
+  geom_jitter(alpha = .5, width = 5) +
+  scale_color_viridis(option = "plasma",
+                      begin = .2,
+                      name = "Own rating") +
+  labs(y = "") +
+  scale_size(guide = F) +
+  theme(panel.grid = element_blank(),
+        text = element_text(size = 16))
+
+plot1 +
+  transition_states(states = rating)
+
+```
+
+
+
 
 
 https://github.com/thomasp85/gganimate/issues/279
