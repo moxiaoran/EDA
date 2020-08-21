@@ -1,0 +1,29 @@
+---
+title: "banking_market_tidymodel"
+author: "Yifei Liu"
+date: "8/22/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# EDA
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+theme_set(theme_minimal())
+
+
+bank_df <- 
+
+
+```
+
+# Modeling
+
+
+```{r}
+```

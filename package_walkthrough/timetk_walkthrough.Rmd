@@ -1,0 +1,162 @@
+---
+title: "timetk_walkthrough"
+author: "Yifei Liu"
+date: "8/5/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# timetk
+
+## plotting time series
+
+```{r}
+
+library(tidyverse)
+library(lubridate)
+library(timetk)
+
+# Setup for the plotly charts (# FALSE returns ggplots)
+interactive <- TRUE
+
+```
+### plotting single time series
+
+
+```{r}
+
+taylor_30_min
+
+```
+
+```{r}
+
+taylor_30_min %>%
+  plot_time_series(date, value,
+                   .interactive = interactive,
+                   .plotly_slider = TRUE)
+
+```
+
+### plotting groups
+
+```{r}
+
+m4_daily %>%
+  group_by(id) %>%
+  plot_time_series(date, value,
+                   .facet_ncol = 2, .facet_scales = "free",
+                   .interactive = interactive)
+
+```
+
+
+### Visualizing transformation & sub-groups
+
+```{r}
+
+m4_hourly %>%
+  group_by(id) %>%
+  plot_time_series(date, log(value),
+                   .color_var = week(date),
+                   .facet_ncol = 2,
+                   .facet_scales = "free",
+                   .interactive = interactive)
+
+```
+
+
+### Static ggplot2 Visualization & Customizations
+
+```{r}
+
+taylor_30_min %>%
+  plot_time_series(date, value,
+                   .color_var = month(date, label = T),
+                   .interactive = FALSE) +
+  scale_y_continuous(labels = scales::comma_format()) +
+  labs(title = "Taylor's MegaWatt Data",
+       x = "Date (30-min intervals)",
+       y = "Energy Demand (MW)",
+       color = "Month")
+
+
+```
+
+
+## plotting Seasonality and correlation
+
+### Correlation plots
+
+Grouped ACF diagnostics
+
+```{r}
+m4_hourly %>%
+  group_by(id) %>%
+  plot_acf_diagnostics(
+    date, value,
+    .lags = "7 days",
+    .interactive = TRUE
+  )
+
+
+```
+
+### Seasonality
+
+```{r}
+
+taylor_30_min %>%
+  plot_seasonal_diagnostics(date, value,
+                            .interactive = TRUE)
+
+```
+
+grouped seasonal visualizations
+
+```{r}
+
+m4_hourly %>%
+  group_by(id) %>%
+  plot_seasonal_diagnostics(date, 
+                            value, .interactive = TRUE)
+
+```
+
+
+STL Diagnostics
+
+```{r}
+
+m4_hourly %>%
+  group_by(id) %>%
+  plot_stl_diagnostics(
+    date, value,
+    .frequency = "auto", .trend = "auto",
+    .feature_set = c("observed", "season", "trend", "remainder"),
+    .interactive = TRUE
+  )
+
+```
+
+
+
+## Time Series COversion
+
+> timetk: A toolkit for time series analysis in R
+
+
+
+
+
+
+
+
+
+

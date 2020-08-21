@@ -1,0 +1,50 @@
+---
+title: "COVID Pacakge Walkthrough"
+author: "Yifei Liu"
+date: "7/1/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+walkthought covdata package. [covdata](https://kjhealy.github.io/covdata/articles/ecdc-data.html). 
+
+I hope in the package walkthrough exercise. I learn some new data vis tricks and analze the details nuber of death of Covid 19. 
+
+```{r}
+
+library(covdata) # remotes::install_github("kjhealy/covdata")
+library(tidyverse)
+theme_set(theme_minimal())
+
+```
+
+
+
+this covnat is from this website [https://www.ecdc.europa.eu/en/publications-data/download-todays-data-geographic-distribution-covid-19-cases-worldwide](https://www.ecdc.europa.eu/en/publications-data/download-todays-data-geographic-distribution-covid-19-cases-worldwide)
+
+
+```{r}
+
+covnat
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

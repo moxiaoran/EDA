@@ -1,0 +1,150 @@
+---
+title: "US Wealth Analysis"
+author: "Yifei Liu"
+date: "7/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(tidyverse)
+library(DT)
+
+```
+
+
+## Distribution of Household Wealth in the U.S. since 1989
+
+
+```{r}
+
+us_wealth <- read_csv("/Users/yifeiliu/Documents/R/data/EDA/package_walkthrough/dfa-networth-levels.csv") %>%
+  janitor::clean_names() %>%
+  mutate(date = str_replace(date,":", "/"),
+         date = as.Date(as.yearqtr(date, format = "%Y/Q%q")),
+         corporate_equities = corporate_equities_and_mutual_fund_shares) %>%
+  select(-c(net_worth, assets,liabilities, home_mortgages, consumer_credit, other_liabilities, corporate_equities_and_mutual_fund_shares)) %>%
+  mutate_if(is.numeric, function(x) x / 1000)
+
+change <- us_wealth %>%
+  select(-category) %>%
+  gather("variable", "value", -date) %>%
+  group_by(date, variable) %>%
+  summarize(total = sum(value)) %>%
+  ungroup() %>%
+  filter(date == min(date) | date == max(date)) %>%
+  group_by(variable) %>%
+  mutate(change = total / lag(total, 1) - 1) %>%
+  filter(date == max(date)) %>%
+  mutate(date = as.yearqtr(date)) %>%
+  select(-c(date, total)) %>%
+  mutate(variable = str_to_title(variable),
+         variable = str_replace(variable, "_", " "))
+  
+
+y = us_wealth %>%
+  select(-category) %>%
+  gather("variable", "value", -date) %>%
+  group_by(date, variable) %>%
+  summarize(total = sum(value)) %>%
+  filter(year(date) %% 5 == 0,
+         month(date) == 1) %>%
+  mutate(date = as.yearqtr(date)) %>%
+  spread(date, total) %>%
+  mutate(variable = str_to_title(variable),
+         variable = str_replace(variable, "_", " ")) %>%
+  full_join(change)
+
+
+```
+
+## add sparkline 
+
+
+```{r}
+
+y_cha <- y %>%
+  gather(key ="Quarter", value ="Price", '1990 Q1':'2020 Q1')
+
+y_spar <- y_cha %>%
+  group_by(variable) %>%
+  summarize(
+    TrendSparkline = spk_chr(
+      Price, type ="line",
+      chartRangeMin = 100, chartRangeMax = max(Price)
+    )
+  )
+
+y_spar
+
+y <- left_join(y, y_spar)
+
+datatable(y, filter = 'top', 
+          options = list(paging = FALSE, fnDrawCallback = htmlwidgets::JS(
+  '
+function(){
+  HTMLWidgets.staticRender();
+}
+'
+)
+       )) %>%
+  formatPercentage('change', digits = 1)
+
+datatable(y, escape = FALSE, filter = 'top', options = list(paging = FALSE, fnDrawCallback = htmlwidgets::JS(
+  '
+function(){
+  HTMLWidgets.staticRender();
+}
+'
+)
+)) %>%
+  formatPercentage('change', digits = 1)
+
+datatable(y, escape = FALSE, filter = 'top', options = list(paging = FALSE, fnDrawCallback = htmlwidgets::JS(
+  '
+function(){
+  HTMLWidgets.staticRender();
+}
+'
+)
+)) %>%
+  spk_add_deps()   %>%
+  formatPercentage('change', digits = 1)
+
+```
+
+
+
+## 
+
+```{r}
+
+
+lag_func <- function(x) {
+  (x - lag(x, 1)) / x * 4
+}
+
+us_wealth %>%
+  select(-category) %>%
+  group_by(date) %>%
+  summarise(across(real_estate:corporate_equities, mean))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+

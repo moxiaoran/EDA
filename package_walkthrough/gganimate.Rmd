@@ -29,366 +29,416 @@ theme_set(theme_minimal())
 ```
 
 
+# gganimate live cookbook - Thomas Lin Pedersen
+
+[gganimate live cookbook - Thomas Lin Pedersen](https://www.youtube.com/watch?v=3UY7Or0v_dI&list=WL&index=493)
+
+
+transition_time
+
 ```{r}
-#> Loading required package: ggplot2
 
-# We'll start with a static plot
-p <- ggplot(iris, aes(x = Petal.Width, y = Petal.Length)) + 
-  geom_point()
+anim <- p + transition_time(year)
 
-plot(p)
+anim
+
+```
+
+Label string interpolation
+
+
+```{r}
+
+p + transition_time(year) +
+  labs(title = "Year: {frame_time}")
+
+```
+
+view_follow
+
+```{r}
+p + 
+  transition_time(year) +
+  labs(title = "Year: {frame_time}") +
+  view_follow(fixed_y = TRUE)
+
+```
+
+shadow_wake 
+
+```{r}
+
+p + 
+  transition_time(year) +
+  labs(title = "Year: {frame_time}") +
+  shadow_wake(wake_length = 0.1,
+              alpha = FALSE)
+
+
+```
+
+shadow_mark
+
+```{r}
+
+p + 
+  transition_time(year) +
+  labs(title = "Year: {frame_time}") +
+  shadow_mark(alpha = .3, size = .5)
+
+```
+
+
+temperature
+
+
+```{r}
+library(GSODR)
+
+copenhagen <- nearest_stations(LAT = 55.676098,
+                               LON = 12.568337,
+                               distance = 50)
+
+austin <- nearest_stations(LAT = 30.267153,
+                           LON = -97.7430608,
+                           distance = 50)
+
+copenhagen_temp <- get_GSOD(2018, station = copenhagen)
+
+austin_temp <- get_GSOD(2018, station = austin)
+
+january <- bind_rows(copenhagen_temp, austin_temp) %>%
+  dplyr::filter(MONTH == "1") %>%
+  distinct(YDAY, STNID, .keep_all = TRUE) %>%
+  mutate(location = if_else(
+    STNID %in% copenhagen, "Copenhagen", "Austin"
+  ))
+
+select(january, YDAY, TEMP, location, STNID)
+
+
+
+```
+static version
+
+```{r}
+
+p <- ggplot(january) +
+  geom_line(aes(YDAY, TEMP,
+                color = location,
+                group = STNID)) +
+  scale_color_brewer(type = "qual") +
+  theme(legend.position = "bottom") +
+  labs(x = "Day of Month",
+       y = "Temperature (celcius)",
+       color = NULL)
+p
+```
+transition_time
+
+
+```{r}
+
+p + 
+  transition_time(YDAY)
+
+```
+transition_time + shadow_mark
+
+```{r}
+
+p + transition_time(YDAY) +
+  shadow_mark()
+
+```
+transition_reveal
+
+```{r}
+
+p + transition_reveal(YDAY) +
+  geom_point(aes(x = YDAY, y = TEMP,
+                 color = location,
+                 group = STNID))
 
 ```
 
 ```{r}
+
+p + transition_reveal(YDAY) +
+  geom_point(aes(x = YDAY, y = TEMP,
+                 color = location,
+                 group = seq_along(STNID)))
+
+```
+
+
+
+```{r}
+
+p <- ggplot(january) +
+  geom_smooth(aes(YDAY, TEMP,
+                  color= location)) +
+  scale_color_brewer(type = "qual") +
+  theme(legend.position = "bottom") +
+  labs(x = "Day of month",
+       y = "Temperature (celcius)",
+       color = NULL)
+p
+```
+
+using stat()
+
+```{r}
+
+p + transition_reveal(stat(x))
+
+```
+
+
+# gganimate getting started - gganimate github example
+
+[gganimate getting started](https://gganimate.com/articles/gganimate.html)
+
+
+## get started
+
+```{r}
+library(gganimate)
+
+p <- ggplot(iris, aes(Petal.Width, Petal.Length)) +
+  geom_point()
+
+p
+
+```
+my attempt
+
+```{r}
+
+
+q <- gapminder %>%
+  mutate(decade = year %/% 10 * 10) %>%
+  ggplot(aes(gdpPercap, lifeExp,
+             size = pop, color = country)) +
+  geom_point(alpha = .7, show.legend = F) +
+  scale_color_manual(values = country_colors) +
+  scale_size(range = c(2, 12)) +
+  scale_x_log10() +
+  labs(x = "GDP per capita",
+       y = "Life Expectancy")
+
+q
+
+```
+
+
+
+
+
+
+
+```{r}
+
 anim <- p + transition_states(Species,
-                          transition_length = 2,
-                          state_length = 1)
+                              transition_length = 2,
+                              state_length = 1)
 
 anim
 ```
 
-```{r}
-anim +
-  ease_aes("bounce-in-out")
+my attempt
 
+```{r}
+
+anim_q <- q + 
+  transition_states(decade,
+                    transition_length = 4,
+                    state_length = 1)
+
+anim_q
+```
+
+
+transition_states() splits up plot data by a discrete variable and animates between teh different states
+
+## Easing
+
+```{r}
+
+anim + 
+  ease_aes('cubic-in-out')
 
 ```
 
 ```{r}
-anim +
-  labs(title = 'Now showing {closest_state}',
-       subtitle = 'Frame {frame} of {nframes}')
-  
+
+anim_q + 
+  ease_aes('cubic-in-out')
+
 ```
 
+
+ease_aes() defines the velocity with which aesthetics change during an animation
+
 ```{r}
-ggplot(iris, aes(x = Petal.Width, y = Petal.Length)) +
+
+anim +
+  ease_aes("bounce-out")
+
+```
+
+## Labeling
+
+```{r}
+
+anim +
+  labs(title = "Now showing {closest_state}",
+       subtitle = "Frame {frame} of {nframes}")
+
+
+```
+
+my attempt
+
+```{r}
+
+anim_q +
+  labs(title = "Now showing {closest_state}",
+       subtitle = "Frame {frame} of {nframes}")
+
+```
+
+## Object permanence
+
+
+```{r}
+
+ggplot(iris, aes(Petal.Width, Petal.Length)) +
   geom_line(aes(group = rep(1:50, 3)), color = "grey") +
   geom_point()
 
 ```
 
+
+1. add some aesthetics taht distinguish the different speices
+
 ```{r}
-ggplot(iris, aes(x = Petal.Width, y = Petal.Length)) +
+
+ggplot(iris, aes(Petal.Width, Petal.Length)) +
   geom_point(aes(color = Species)) +
-  transition_states(Species, 
-                    transition_length = 2,
-                    state_length = 1) +
-  ease_aes("cubic-in-out")
-
-
-```
-
-```{r}
-ggplot(iris, aes(x = Petal.Width, y = Petal.Length)) + 
-  geom_point(aes(colour = Species, group = 1L)) +
-  transition_states(Species,
-                    1,1)
-
-```
-
-
-```{r}
-anim <- ggplot(iris, aes(x = Petal.Width, y = Petal.Length)) + 
-  geom_point(aes(colour = Species), size = 2) + 
   transition_states(Species,
                     transition_length = 2,
                     state_length = 1)
 
-anim + enter_fade() +
-  exit_fade() 
+```
+
+
+2. set the group directly
+
+
+```{r}
+
+ggplot(iris, aes(Petal.Width, Petal.Length)) +
+  geom_point(aes(group = seq_along(Species)))+
+  transition_states(Species,
+                    transition_length = 2,
+                    state_length = 1)
+
+```
+
+the group aesthetic defines how the data in a layer is matches across the animation
+
+In general 2. is prefered as it makes the intend explicit, it also make it possible to match data with different discrete aesthetics such as keeping our (now obviously faultly) transition while having different color for the different species
+
+
+```{r}
+
+ggplot(iris, aes(Petal.Width, Petal.Length))+
+  geom_point(aes(color = Species, group = 1L)) +
+  transition_states(Species,
+                    transition_length = 2,
+                    state_length = 1)
+
+```
+
+my attempt
+
+```{r}
+
+gapminder %>%
+  mutate(decade = year %/% 10 * 10) %>%
+  ggplot(aes(gdpPercap, lifeExp,
+             size = pop)) +
+  geom_point(aes(color = continent, group = 1L),
+             alpha = 0.7, show.legend = F) +
+  scale_color_manual(values = continent_colors) +
+  scale_size(range = c(2, 12)) +
+  scale_x_log10() +
+  labs(x = "GDP per capita",
+       y = "Life Expectancy") +
+  transition_states(continent,
+                    transition_length = 5,
+                    state_length = 1)
+
+```
+
+## Enter and Exit
+
+```{r}
+
+anim <- ggplot(iris, aes(Petal.Width, Petal.Length)) +
+  geom_point(aes(color = Species), size = 2) +
+  transition_states(Species,
+                    transition_length = 2,
+                    state_length = 1)
+
+anim +
+  enter_fade() +
+  exit_shrink()
 
 ```
 
 ```{r}
+
 anim + 
-  enter_fade() + enter_drift(x_mod = -1) + 
+  enter_fade() + enter_drift(x_mod = -1) +
   exit_shrink() + exit_drift(x_mod = 5)
-
+ 
 ```
 
 
 
 ```{r}
-ggplot(airquality) +
-  geom_line(aes(Day, Temp, group = Month))
 
-
-last_plot() +
-  transition_reveal(Day)
-
-
-
-```
-
-```{r}
-
-frmort <- set.upperage(fr.mort, 100)
-
-frmort <- tibble(
-      year = rep(frmort$year, rep(length(frmort$age), length(frmort$year))),
-      age = rep(frmort$age, length(frmort$year)),
-      female = c(frmort$rate$female),
-      male = c(frmort$rate$male),
-    ) %>%
-  gather(male, female, key = "sex", value = "mortrate")
-
-frmort
-
+q +
+  transition_states(continent,
+                    transition_length = 2,
+                    state_length = 1) +
+  enter_fade() +
+  exit_shrink()
 
 ```
 
-```{r}
-frmort %>%
-  ggplot(aes(x = age, y = mortrate, group = year, col = year)) +
-    geom_line() +
-    facet_grid(~sex) +
-    scale_y_log10() +
-    xlab("Age") + ylab("Log mortality") +
-    scale_color_gradientn(colours = rainbow(13))
-
-```
-Animate this plot
+## Rendering
 
 ```{r}
-frmort %>% 
-  filter(year >= 1900) %>%
-  ggplot(aes(x = age, y = mortrate, group = year, col = year)) +
-    geom_line() +
-    facet_grid(~sex) +
-    scale_y_log10() +
-    xlab("Age") + ylab("Log mortality") +
-    scale_color_gradientn(colours = rainbow(13)) +
-    transition_time(year) +
-    ease_aes("linear") +
-    shadow_mark(color = "grey70") +
-    labs(x = "Age", y = "Log mortality",
-         title = 'year: {frame_time}')
 
+animate(
+  anim + enter_fade() +exit_fly(y_loc = 1),
+  render = av_renderer(fil = "/Users/yifeiliu/Documents/R/output/EDA/package_walkthrough/test.gif")
+)
 
 ```
 
 
 ```{r}
-
-record1 <- read.spss('/Users/yifeiliu/Documents/R/data/EDA/Record1.sav', to.data.frame = T)
-params <- expand.grid(b0 = seq(0,300, length.out = 2), b1 = seq(-0.1, 0.1, length.out = 2))
-
-params <- data.frame(b0 = c(0, 0, 200, 200, 400, 400, 134.14),
-  b1 = c(-0.1, 0.1, -0.1, 0.1, -0.1, 0.1, 0.09612))
-  record_anim <- lapply(1:nrow(params), function(i) {
-  b0 <- params$b0[i]
-  b1 <- params$b1[i]
-  record_anim <- record1 %>%
-  mutate(sales_pred = b0 + b1 * adverts) %>%
-  mutate(residual = sales - sales_pred) %>%
-  mutate(residual2 = residual^2) %>%
-  mutate(m_sales = mean(sales)) %>%
-  mutate(param_b0 = b0, param_b1 = b1, state = i)
-  return(record_anim)
-}) %>% rbindlist
-
+animate(
+  anim + enter_fade() +exit_fly(y_loc = 1) +
+    exit_fade(), width = 400, height = 600, res = 35,
+  render = av_renderer(fil = "/Users/yifeiliu/Documents/R/output/EDA/package_walkthrough/test.gif")
+)
 
 ```
-
-
-```{r}
-ggplot(record_anim) +
-  geom_rect(aes(xmin=adverts, xmax = adverts + residual,ymin = sales, ymax = sales_pred,fill = residual^2), alpha = 0.8) +
-  geom_point(aes(x = adverts, y = sales)) +
-  geom_line(aes(x = adverts, y = sales_pred), color = 'black', size = 1) +
-  scale_fill_viridis_c('Squared Residual') +
-  scale_x_continuous('Advertising Budget\n(thousands of pounds)') +
-  scale_y_continuous('Record Sales\n(thousands)') +
-  coord_fixed(ratio = 2) +
-  theme(legend.position = 'bottom') +
-  transition_states(state, transition_length = 3, state_length = 1) +
-  labs(title = 'Finding the least sum of squares') +
-  ease_aes('sine-in-out')
-
-
-```
-
-
-## GDP 
-
-article https://datascienceplus.com/how-to-build-animated-bar-plots-using-r/
-
-
-```{r}
-gdp <- read_csv("https://raw.githubusercontent.com/amrrs/animated_bar_charts_in_R/master/data/gdp_tidy.csv")
-
-gdp_x <- gdp %>%
-  group_by(year) %>%
-  mutate(country_name = fct_reorder(country_name, value),
-         rank = rank(value)) %>%
-  group_by(country_name) %>%
-  filter(rank <= 10) %>%
-  ungroup()
-
-x <- gdp_x %>%
-  ggplot(aes(country_name, value, fill = country_name)) +
-  geom_col(show.legend = F, alpha = 0.8) +
-  coord_flip()+
-  labs(y = "GDP", x = "")
-
-
-gdp_formatted <- gdp %>%
-  group_by(year) %>%
-  # The * 1 makes it possible to have non-integer ranks while sliding
-  mutate(rank = rank(-value),
-         Value_rel = value/value[rank==1],
-         Value_lbl = paste0(" ",round(value/1e9))) %>%
-  group_by(country_name) %>% 
-  filter(rank <=10) %>%
-  ungroup()
-
-staticplot = ggplot(gdp_formatted, aes(rank, group = country_name, 
-                fill = as.factor(country_name), color = as.factor(country_name))) +
-  geom_tile(aes(y = value/2,
-                height = value,
-                width = 0.9), alpha = 0.8, color = NA) +
-  geom_text(aes(y = 0, label = paste(country_name, " ")), vjust = 0.2, hjust = 1) +
-  geom_text(aes(y=value,label = Value_lbl, hjust=0)) +
-  coord_flip(clip = "off", expand = FALSE) +
-  scale_y_continuous(labels = scales::comma) +
-  scale_x_reverse()
-
-```
-
-
-[Animated Plots using ggplot and gganimate](https://www.statworx.com/de/blog/animated-plots-using-ggplot-and-gganimate/)
-
-
-```{r}
-# Load data 
-source_link <- "http://www.stat.columbia.edu/~gelman/arm/examples/speed.dating/Speed%20Dating%20Data.csv"
-df <- data.table::fread(input = source_link)
-
-# Data Plot #1 ------------------------------------------------------------
-# Data structure: one row per pairing of participant and his/her partners 
-# From multiple rows per participant extract unique ratings
-# Rating the importance of several characteristics in a potential partner 
-# Allocating 100 points to 6 characteristics...
-# ... 1) according to the importance as presumed to be felt by peers  
-# ... 2) according to the importance as felt by participants themselves
-df_what_look_for <- df %>% 
-  dplyr::filter(wave %!in% c(6:9)) %>% # here recorded variables diverge
-  dplyr::select(# participants unique ID:
-    iid, 
-    # rating of participant  
-    attr1_1, sinc1_1, intel1_1, fun1_1, amb1_1, shar1_1, 
-    # assumed rating of peers
-    attr4_1, sinc4_1, intel4_1, fun4_1, amb4_1, shar4_1) %>%
-  unique() %>% # only keep one row of unique information per participant
-  tidyr::drop_na() # remove rows with missing values
-
-df_what_look_for_self <- df_what_look_for %>% 
-  dplyr::select(iid, attr1_1, sinc1_1, intel1_1, fun1_1, amb1_1, shar1_1) %>%
-  dplyr::rename(Attractive = attr1_1, 
-                Sincere = sinc1_1, 
-                Intelligent = intel1_1,
-                Fun = fun1_1,
-                Ambitious = amb1_1, 
-                `Shared Interests` = shar1_1) %>%
-  dplyr::mutate_all(as.integer) %>%
-  dplyr::mutate(rating = "Own Ratings") %>%
-  as.data.frame()
-
-# Create data frame with assumed ratings of peers incl. label variable
-df_what_look_for_peers <- df_what_look_for %>% 
-  dplyr::select(iid, attr4_1, sinc4_1, 
-                intel4_1, fun4_1, amb4_1, shar4_1) %>%
-  dplyr::rename(Attractive = attr4_1, 
-                Sincere = sinc4_1, 
-                Intelligent = intel4_1,
-                Fun = fun4_1,
-                Ambitious = amb4_1, 
-                `Shared Interests` = shar4_1) %>%
-  dplyr::mutate_all(as.integer) %>%
-  dplyr::mutate(rating = "Presumed Peer Ratings") %>%
-  as.data.frame()
-
-# Combine data and transform to long format
-df_what_look_for <- bind_rows(df_what_look_for_self,
-                              df_what_look_for_peers) %>%
-  tidyr::gather(key = "variable", 
-                value = "value", 
-                Attractive:`Shared Interests`) 
-
-# To be able to track own rating in all later subsets: add info as added variable 
-# Create lookup table
-df_what_look_for_lookup <- df_what_look_for %>%
-  dplyr::filter(rating == "Own Ratings") %>% 
-  dplyr::rename(own_rating = value) %>%
-  dplyr::select(iid, variable, own_rating)
-
-# Add recurrent information to data frame
-df_what_look_for <- left_join(df_what_look_for, 
-                              df_what_look_for_lookup,
-                              by = c("iid", "variable")) 
-
-
-plot1 <- df_what_look_for %>% 
-  ggplot(aes(value, variable, color = own_rating, size = own_rating, group = iid)) +
-  geom_jitter(alpha = .5, width = 5) +
-  scale_color_viridis(option = "plasma",
-                      begin = .2,
-                      name = "Own rating") +
-  labs(y = "") +
-  scale_size(guide = F) +
-  theme(panel.grid = element_blank(),
-        text = element_text(size = 16))
-
-plot1 +
-  transition_states(states = rating)
-
-```
-
-```{r}
-
-plot1 +
-  transition_states(states = rating,
-                    transition_length = 3,
-                    state_length = 1,
-                    wrap = F)
-
-```
-
-```{r}
-
-plot1 +
-  transition_states(states = rating) +
-  ease_aes("bounce-in")
-
-```
-
-```{r}
-
-plot1 +
-  labs(subtitle = "{closest_state}") +
-  transition_states(states = rating)  
-
-#reference: https://cran.r-project.org/web/packages/gganimate/vignettes/gganimate.html
-```
-
-
-```{r}
-
-plot1B <- plot1 +
-  geom_jitter(alpha = .1, width = 5) 
-
-plot1B +
-  labs(subtitle = "{closest_state}") +
-  transition_states(states = rating) +
-  shadow_wake(wake_length = .5)
-
-```
-
-
-
-
 
 
 

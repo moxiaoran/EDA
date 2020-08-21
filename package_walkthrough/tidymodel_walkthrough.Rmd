@@ -1,0 +1,1303 @@
+---
+title: "tidymodel walkthrough"
+author: "Yifei Liu"
+date: "8/3/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+[tidymodel](https://www.tidymodels.org/start/models/)
+
+# 1. Build a model
+
+## Introduction
+
+```{r}
+
+library(tidyverse)
+
+library(tidymodels) # for the parsnip package, along with the rest tidymodels
+
+# helper packages
+library(readr) # for importing data
+library(broom.mixed)
+theme_set(theme_minimal())
+```
+
+
+## The sea urchins data
+
+```{r}
+
+urchins <-
+  # Data were assembled for a tutorial 
+  # at https://www.flutterbys.com.au/stats/tut/tut7.5a.html
+  read_csv("https://tidymodels.org/start/models/urchins.csv") %>% 
+  # Change the names to be a little more verbose
+  setNames(c("food_regime", "initial_volume", "width")) %>% 
+  # Factors are very helpful for modeling, so we convert one column
+  mutate(food_regime = factor(food_regime, levels = c("Initial", "Low", "High")))
+
+
+urchins %>%
+  count(food_regime)
+```
+
+
+
+```{r}
+
+ggplot(urchins, aes(initial_volume, width,
+                    group = food_regime, col = food_regime)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = F) +
+  scale_color_viridis_d(option = "plasma", end = .7)
+
+```
+
+## Build and fit a model
+
+now that the type of model has been specified, a method for fitting or training the model can be stated using engine. The engine value is often a mash-up of the software that can be used to fit or train the model as well as the estimation method. For example, to use ordinary least squares. we can set the engine to _lm_
+
+```{r}
+
+lm_mod <- 
+  linear_reg() %>%
+  set_engine("lm")
+
+```
+
+from here, the model can be estiamted or trained using the _fit()_ function
+
+```{r}
+
+lm_fit <- 
+  lm_mod %>%
+  fit(width ~ initial_volume * food_regime, data = urchins)
+
+lm_fit
+
+```
+
+Perhaps our analysis requires a description of the model parameter estimates and their statisitcal properities. Although the summary function for lm method can provide that, it gives the results back in an unwieldy format. Many models have tidy method that provides the summary result in a more predictable and useful format. (a DataFrame with standard column names)
+
+```{r}
+
+tidy(lm_fit)
+
+
+```
+
+## Use a model to predict
+
+```{r}
+
+new_points <- expand_grid(initial_volume = 20,
+                          food_regime = c("Initial", "Low", "High"))
+
+new_points
+
+```
+
+
+tidymodel function standardized the syntax around different predicting model
+
+```{r}
+
+mean_pred <- predict(lm_fit, new_data = new_points)
+
+
+mean_pred
+```
+
+
+```{r}
+
+
+conf_int_pred <- predict(lm_fit,
+                         new_data = new_points,
+                         type = "conf_int")
+
+conf_int_pred
+
+# now combine the interval and predicted values
+
+plot_data <-
+  new_points %>%
+  bind_cols(mean_pred) %>%
+  bind_cols(conf_int_pred)
+
+# and plot
+
+ggplot(plot_data, aes(food_regime)) +
+  geom_point(aes(y = .pred)) +
+  geom_errorbar(aes(ymin = .pred_lower,
+                    ymax = .pred_upper,
+                    width = .2)) +
+  labs(y = "urchin size")
+
+
+
+
+
+```
+
+
+## Model with a different engine
+
+```{r}
+
+# set the prior distribution
+
+prior_dist <- rstanarm::student_t(df = 1)
+# set seed
+set.seed(123)
+
+# make the parsnip model
+
+bayes_mod <-
+  linear_reg() %>%
+  set_engine("stan",
+             prior_intercept = prior_dist,
+             prior = prior_dist)
+# train the model
+
+bayes_fit <-
+  bayes_mod %>%
+  fit(width ~ initial_volume * food_regime, data = urchins)
+
+
+print(bayes_fit, digits = 5)
+
+```
+
+
+```{r}
+
+
+tidy(bayes_fit, conf.int = TRUE)
+```
+
+
+```{r}
+bayes_plot_data <-
+  new_points %>%
+  bind_cols(predict(bayes_fit, new_data = new_points)) %>%
+  bind_cols(predict(bayes_fit, new_data = new_points, type = "conf_int"))
+  
+
+ggplot(bayes_plot_data, aes(x = food_regime)) +
+  geom_point(aes(y = .pred)) +
+  geom_errorbar(aes(ymin = .pred_lower, ymax = .pred_upper), width = .2) +
+  labs(y = "urchin size",
+       title = "Bayesian model with t(1) prior distribution")
+  
+```
+
+
+## Why does it work that way?
+
+standard modeling function is that they don't separate what you want from the execution. For example, the process of executing a formula has not happen repeatedly across model calls even when the formula does not change. We can't recycle those computation 
+
+```{r}
+urchins %>%
+  group_by(food_regime) %>%
+  summarize(med_vol = median(initial_volume))
+
+bayes_mod %>%
+  fit(width ~ initial_volume * food_regime, data = urchins)
+
+
+
+```
+
+
+
+# 2. Preprocess your data with recipes
+
+
+```{r}
+library(nycflights13)
+library(skimr)
+
+```
+
+
+## The New york city flight data
+
+```{r}
+
+flights_data <-
+  flights %>%
+  mutate(
+    arr_delay = ifelse(arr_delay >= 30, "late", "on_time"),
+    arr_delay = factor(arr_delay),
+    date = as.Date(time_hour)
+    ) %>%
+  inner_join(weather, by = c("origin", "time_hour")) %>%
+  select(dep_time, flight, origin, dest, air_time, distance, 
+         carrier, date, arr_delay, time_hour) %>%
+  na.omit() %>%
+  mutate_if(is.character, as.factor)
+```
+
+```{r}
+
+flights_data %>%
+  count(arr_delay) %>%
+  mutate(prop = n / sum(n))
+
+```
+
+```{r}
+
+glimpse(flights_data)
+
+```
+
+
+```{r}
+
+flights_data %>%
+  skimr::skim(dest, carrier)
+
+```
+
+
+## Data Splitting
+
+
+```{r}
+set.seed(555)
+
+data_split <- initial_split(flights_data, prop = 3/4)
+
+train_data <- training(data_split)
+test_data <- testing(data_split)
+
+```
+
+
+## Create recipe and roles
+
+
+```{r}
+
+flights_rec <-
+  recipe(arr_delay ~ ., data = train_data)
+
+
+
+```
+
+
+```{r}
+flights_rec <-
+  recipe(arr_delay ~ ., data = train_data) %>%
+  update_role(flight, time_hour, new_role = "ID")
+
+summary(flights_rec)
+
+```
+
+
+
+## Create features
+
+```{r}
+
+flights_data %>%
+  distinct(date) %>%
+  mutate(numeric_date = as.numeric(date))
+
+
+```
+
+it's possible that the numeric date vaiable is a good option for modeling; perhaps the model would benefit from a linear trend between the log-odds for a late arrival and the numeric date variable, 
+
+```{r}
+flights_rec <-
+  recipe(arr_delay ~ ., data = train_data) %>%
+  update_role(flight, time_hour, new_role = "ID") %>%
+  step_date(date, features = c("dow", "month")) %>%
+  step_holiday(date, holidays = timeDate::listHolidays("US")) %>%
+  step_rm(date)
+
+summary(flights_rec)
+```
+
+you need to explicitly tell recipes to create dummary variable using step_dummy()
+
+```{r}
+flights_rec <-
+  recipe(arr_delay ~ ., data = train_data) %>%
+  update_role(flight, time_hour, new_role = "ID") %>%
+  step_date(date, features = c("dow", "month")) %>%
+  step_holiday(date, holidays = timeDate::listHolidays("US")) %>%
+  step_rm(date) %>%
+  step_dummy(all_nominal(), -all_outcomes())
+
+
+```
+
+  > create dummary variable for all of the factors columns unless they are outcomes
+
+
+```{r}
+summary(flights_rec)
+
+test_data %>%
+  distinct(dest) %>%
+  anti_join(train_data)
+```
+
+```{r}
+
+flights_rec <- 
+  recipe(arr_delay ~ ., data = train_data) %>%
+  update_role(flight, time_hour, new_role = "ID") %>%
+  step_date(date, features = c("dow", "month")) %>%
+  step_holiday(date, holidays = timeDate::listHolidays("US")) %>%
+  step_rm(date) %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>%
+  step_zv(all_predictors())
+```
+
+Now we've created a specification of what should be done with the data. How do we use the recipe?
+
+
+## Fit a model with a recipe
+
+let's use logistic regression to model the flight data. As we saw in Build a model. we started by building a model specification using parnsip packages:
+
+```{r}
+lr_mod <- 
+  logistic_reg() %>%
+  set_engine("glm")
+
+
+```
+
+we will want to use our recipe across several steps as we train and test our model. 
+
+1. process the recipe using the training set
+2. Apply the recipe to the training set
+3. Apply the recipe to the testing set
+
+```{r}
+flights_wflow <-
+  workflow() %>%
+  add_model(lr_mod) %>%
+  add_recipe(flights_rec)
+
+
+flights_wflow
+
+```
+
+
+```{r}
+flights_fit <-
+  flights_wflow %>%
+  fit(data = train_data)
+
+
+
+```
+
+use ```pull_workflow_fit()``` and ```pull_working_prepped_recipe``` 
+
+```{r}
+flights_fit %>%
+  pull_workflow_fit() %>%
+  tidy()
+
+
+```
+
+
+## use a trained workflow to predict
+
+1. Build the model (lr_mod)
+2. Created a preprocessing recipe (flights_rec)
+3. Bundled the model and recipe(flight_wflow) and
+4. Trained our workflow using a single call to fit()
+
+```{r}
+predict(flights_fit, test_data)
+
+flights_pred <-
+  predict(flights_fit, test_data, type = "prob") %>%
+  bind_cols(test_data %>% select(arr_delay, time_hour, flight))
+
+flights_pred
+
+```
+
+use ROC curve as our metric
+
+```{r}
+flights_pred %>%
+  roc_curve(truth = arr_delay, .pred_late) %>%
+  autoplot()
+
+flights_pred %>%
+  roc_auc(truth = arr_delay, .pred_late)
+
+
+```
+
+
+
+# 3. Evaluate your model with resampling
+
+## introduction
+
+since we are able to build workflow use parsnip, recipe together. This tutorial explained how to characterize model performance base on resampling statistics
+
+```{r}
+
+library(modeldata)
+
+```
+
+```{r}
+data(cells, package = "modeldata")
+
+cells
+```
+
+predicting image segmentation quality, back to the cells data
+
+```{r}
+cells
+cells %>% 
+  count(class) %>%
+  mutate(porp = n / sum(n))
+
+
+```
+
+## Data spliting
+
+- the training set is used to estiamte parameters, compare models and feature engineering techniques, tune models. etc. 
+
+- the test set is held in reserve until the end of the project, at which point there should only be one or two models under serious consideration It is used as an unbiased source for measuring final model performance. 
+
+```{r}
+set.seed(123)
+cell_split <- initial_split(cells %>% select(-case),
+                            strata = class)
+
+
+```
+
+
+```{r}
+cell_train <- training(cell_split)
+cell_test <- testing(cell_split)
+
+
+nrow(cell_train) / nrow(cells)
+
+cell_train %>%
+  count(class) %>%
+  mutate(prob = n / sum(n))
+
+cell_test %>%
+  count(class) %>%
+  mutate(prob = n / sum(n))
+
+```
+
+
+
+
+
+
+## Modeling
+
+```{r}
+rf_mod <- 
+  rand_forest(trees = 1000) %>%
+  set_engine("ranger") %>%
+  set_mode("classification")
+
+
+
+```
+
+```{r}
+set.seed(234)
+rf_fit <- 
+  rf_mod %>%
+  fit(class ~., data = cell_train)
+
+rf_fit
+
+
+```
+
+
+me doing the same thing, but use logistic regression method
+
+```{r}
+
+lr_mod <- 
+  logistic_reg() %>%
+  set_engine("glm")
+
+lr_rec <- 
+  recipe(class ~ ., data = cell_train)
+  
+
+lr_wflow <-
+  workflow() %>%
+  add_model(lr_mod) %>%
+  add_recipe(lr_rec)
+
+lr_fit <- 
+  lr_wflow %>%
+  fit(data = cell_train)
+  
+```
+
+
+## Estimating performance
+
+```{r}
+rf_training_pred <-
+  predict(rf_fit, cell_train) %>%
+  bind_cols(predict(rf_fit,cell_train , type = "prob")) %>%
+  bind_cols(cell_train %>% select(class))
+
+
+```
+
+use yardstick function
+
+```{r}
+rf_training_pred %>%
+  roc_auc(truth = class, .pred_PS)
+
+
+rf_training_pred %>%
+  accuracy(truth = class, .pred_class)
+```
+
+
+
+```{r}
+rf_testing_pred <-
+  predict(rf_fit, cell_test) %>%
+  bind_cols(predict(rf_fit,cell_test , type = "prob")) %>%
+  bind_cols(cell_test %>% select(class))
+
+rf_testing_pred %>%
+  roc_auc(truth = class, .pred_PS)
+
+
+rf_testing_pred %>%
+  accuracy(truth = class, .pred_class)
+
+
+```
+
+
+
+
+my lr model
+
+```{r}
+
+lr_training_pred <-
+  predict(lr_fit, cell_train) %>%
+  bind_cols(predict(rf_fit, cell_train, type = "prob")) %>%
+  bind_cols(cell_train %>% select(class))
+
+lr_training_pred %>%
+  roc_auc(truth = class, .pred_PS)
+
+lr_training_pred %>%
+  accuracy(truth = class, .pred_class)
+
+
+lr_testing_pred <-
+  predict(lr_fit, cell_test) %>%
+  bind_cols(predict(rf_fit, cell_test, type = "prob")) %>%
+  bind_cols(cell_test %>% select(class))
+
+lr_testing_pred %>%
+  roc_auc(truth = class, .pred_PS)
+
+lr_testing_pred %>%
+  accuracy(truth = class, .pred_class)
+
+```
+
+
+## Resampling to the rescue
+
+these resampling statistics are an effective method for measuring model performance without predicting the training set directly as a whole.
+
+## Fit a model with resampling
+
+```{r}
+set.seed(345)
+folds <- vfold_cv(cell_train, v = 10)
+
+
+folds
+
+```
+
+
+```{r}
+
+rf_wf <- 
+  workflow() %>%
+  add_model(rf_mod) %>%
+  add_formula(class ~ .)
+
+set.seed(456)
+rf_fit_rs <- 
+  rf_wf %>%
+  fit_resamples(folds)
+
+rf_fit_rs
+
+```
+
+```{r}
+collect_metrics(rf_fit_rs)
+
+
+```
+
+```{r}
+
+rf_testing_pred %>%
+  roc_curve(truth = class, .pred_PS) %>%
+  ggplot(aes(x = 1 - specificity, y = sensitivity)) +
+  geom_path() +
+  geom_abline(lty = 3) +
+  coord_equal() +
+  theme_bw()
+
+rf_testing_pred %>%
+  roc_auc(class, .pred_PS)
+
+rf_testing_pred %>%
+  accuracy(class, .pred_class)
+
+```
+
+
+
+
+
+
+
+
+
+
+# 4. Tune model parameters
+
+## introduction
+
+some model parameters cannot be learned directly from a data set during model training; these kinds of paramters are called *hyperparameters*. 
+
+instead of learning these kind of hyperparameters during model training, we can estiamte the best values for these values by training many models on resampled data sets and exploring how well all these models perform. This process is called *tuning*
+
+```{r}
+library(vip)
+```
+
+
+## the cell image data, revisited. 
+
+in the previous evaluate your model with resampling. well segmented and poor segmented. 
+
+```{r}
+data(cells, package = "modeldata")
+
+glimpse(cells)
+```
+
+
+## predicting image segmentation, but better. 
+
+```{r}
+set.seed(123)
+
+
+cell_split <- initial_split(cells %>% select(-case),
+                            strata = class)
+
+cell_train <- training(cell_split)
+cell_test <- testing(cell_split)
+
+
+```
+
+
+## tuning hyperparameters
+
+```{r}
+
+tune_spec <- 
+  decision_tree(
+    cost_complexity = tune(),
+    tree_depth = tune()
+  ) %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+tune_spec
+
+```
+
+
+think fo ``tune()`` here as a placeholder. After the tuning process, we will select a single numeric value for each of these hyperparameters. For now, we specify our parsnip model object and identify the hyperparameters we will ```tune()```
+
+we can train many models using resampled data and see which model turn out best. 
+
+```{r}
+tree_grid <-
+  grid_regular(cost_complexity(),
+               tree_depth(),
+               levels = 5)
+tree_grid
+
+```
+
+the function ```grid_regular()``` is from dials package. it chooise sensible value to try for each hyperparameters. We ask for 5 each. Since we have two to tune, grid_regular return $5\times5 = 25$ different possible tuning combinations to try in a tidy tibble format. 
+
+```{r}
+tree_grid
+
+```
+
+```{r}
+
+set.seed(234)
+cell_folds <- vfold_cv(cell_train)
+
+```
+
+
+## model tuning with a grid
+
+tun a workflow that bundles together a model specification and a recipe or model preprocessor
+
+```{r}
+
+set.seed(345)
+
+tree_wf <- 
+  workflow() %>%
+  add_model(tune_spec) %>%
+  add_formula(class ~ .)
+
+tree_res <-
+  tree_wf %>%
+  tune_grid(
+    resamples = cell_folds,
+    grid = tree_grid
+  )
+
+tree_res
+
+```
+
+```{r}
+tree_res %>%
+  collect_metrics() %>%
+  mutate(tree_depth = factor(tree_depth)) %>%
+  ggplot(aes(cost_complexity, mean, color = tree_depth)) +
+  geom_line(size = 1.5, alpha = 0.6) +
+  geom_point() +
+  facet_wrap(~ .metric, scales = "free", nrow = 2) +
+  scale_x_log10(labels = scales::label_number()) +
+  scale_color_viridis_d(option = "plasma", begin = .9, end = 0)
+  
+
+
+```
+
+
+the best tee seems to be between these values with a tree depth of 4. the show_best function shwos us the top 5 candidate model by default
+
+```{r}
+
+tree_res %>%
+  show_best("roc_auc")
+
+best_tree <-
+  tree_res %>%
+  select_best("roc_auc")
+
+best_tree
+```
+
+## Finalizing our model
+
+we can update our workflow object tree_wf with the values from select_best()
+
+```{r}
+
+final_wf <-
+  tree_wf %>%
+  finalize_workflow(best_tree)
+
+final_wf
+
+```
+
+exploring results
+
+```{r}
+final_tree <-
+  final_wf %>%
+  fit(data = cell_train)
+
+final_tree
+
+
+```
+
+
+you may want to extract the model object from the workflow. ```pull_workflow_fit()```
+
+```{r}
+
+final_tree %>%
+  pull_workflow_fit() %>%
+  vip()
+
+```
+
+
+the last fit
+
+```{r}
+final_fit <-
+  final_wf %>%
+  last_fit(cell_split)
+
+
+final_fit %>%
+  collect_metrics()
+
+final_fit %>%
+  collect_predictions() %>%
+  roc_curve(class, .pred_PS) %>%
+  ggplot(aes(1 - specificity, sensitivity)) +
+  geom_path() +
+  geom_abline(lty = 3) +
+  coord_equal() +
+  theme_bw()
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 5. A predictive modeling case study
+
+## the hotel booking data
+
+```{r}
+hotels <- 
+  read_csv('https://tidymodels.org/start/case-study/hotels.csv') %>%
+  mutate_if(is.character, as.factor) 
+
+
+dim(hotels)
+```
+
+
+```{r}
+hotels %>%
+  count(children) %>%
+  mutate(prop = n/ sum(n))
+
+
+```
+
+
+## Data splitting & resampling
+
+```{r}
+set.seed(123)
+
+splits <- initial_split(hotels, strata = children)
+
+
+hotel_other <- training(splits)
+hotel_test <- testing(splits)
+
+hotel_test %>%
+  count(children) %>%
+  mutate(prop = n / sum(n))
+
+```
+
+
+```{r}
+
+set.seed(234)
+
+val_set <- 
+  validation_split(hotel_other,
+                   strata = children,
+                   prop = 0.8)
+
+val_set
+
+
+```
+
+
+## A first model: Penalized logistic regression
+
+build the model
+
+```{r}
+
+lr_mod <-
+  logistic_reg(penalty = tune(),
+               mixture = 1) %>%
+  set_engine("glmnet")
+
+```
+
+
+create the recipe 
+
+- ```step_date()``` creates predictors for the year, moth, and day of the weak.
+- ```step_holiday()``` generates a set of indicator variables for specific holidays. 
+- ```step_rm()``` removes variables here we will to remove the original date variable since we no longer want it in the model
+
+- ```step_dummy``` converts characters of factors into one or more numeric binary model terms for the level of original data
+- ```step_zv()``` remove indicator variable that only contain a single unique value. This is important because, for penalized models, the predictors should be centered and scaled
+- ```step_normaized()``` centers and scales numeric variables. 
+
+```{r}
+holidays <- c("AllSouls", "AshWednesday", "ChristmasEve", "Easter", "ChristmasDay",
+              "GoodFriday", "NewYearsDay", "PalmSunday")
+
+
+lr_recipe <-
+  recipe(children ~ ., data = hotel_other) %>%
+  step_date(arrival_date) %>%
+  step_holiday(arrival_date, holidays = holidays) %>%
+  step_rm(arrival_date) %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>%
+  step_zv(all_predictors()) %>%
+  step_normalize(all_predictors())
+
+
+
+```
+
+
+create the workflow
+
+let's bundle the model and recipe into a single workflow object to make management to the R object easier
+
+```{r}
+lr_workflow <-
+  workflow() %>%
+  add_model(lr_mod) %>%
+  add_recipe(lr_recipe)
+
+
+```
+
+
+create the grid for the tuning
+
+```{r}
+
+lr_reg_grid <- tibble(penalty = 10^seq(-4, -1, length.out = 30))
+
+lr_reg_grid %>%
+  top_n(-5)
+
+
+```
+
+
+train and tune the model
+
+```{r}
+
+lr_res <-
+  lr_workflow %>%
+  tune_grid(val_set,
+            grid = lr_reg_grid,
+            control = control_grid(save_pred = TRUE),
+            metrics = metric_set(roc_auc))
+
+
+lr_plot <- 
+  lr_res %>%
+  collect_metrics() %>%
+  ggplot(aes(x = penalty, y = mean)) +
+  geom_point() +
+  geom_line() +
+  labs( y = "Area under the ROC curve") +
+  scale_x_log10(labels = scales::label_number()) 
+  
+lr_plot
+
+```
+
+
+```{r}
+
+top_models <- 
+  lr_res %>%
+  show_best("roc_auc", n = 15) %>%
+  arrange(penalty)
+  
+top_models
+
+```
+
+
+```{r}
+
+lr_best <-
+  lr_res %>%
+  collect_metrics() %>%
+  arrange(penalty) %>%
+  slice(12)
+
+lr_auc <- 
+  lr_res %>%
+  collect_predictions(parameters = lr_best) %>%
+  roc_curve(children, .pred_children) %>%
+  mutate(model = "Logistic Regression")
+
+autoplot(lr_auc)
+
+
+```
+
+perhaps the linear nature of the prediction equation is too limiting for this data set. 
+
+
+## A second model: tree-based ensemble
+
+
+build the model and improve training time
+
+```{r}
+
+cores <- parallel::detectCores()
+
+rf_mod <-
+  rand_forest(mtry = tune(),
+              min_n = tune(),
+              trees = 1000) %>%
+  set_engine("ranger", num.threads = cores) %>%
+  set_mode("classification")
+
+
+```
+
+
+create the recipe and workflow
+
+```{r}
+
+rf_recipe <-
+  recipe(children ~ ., data = hotel_other) %>%
+  step_date(arrival_date) %>%
+  step_holiday(arrival_date) %>%
+  step_rm(arrival_date)
+
+
+
+rf_workflow <-
+  workflow() %>%
+  add_model(rf_mod) %>%
+  add_recipe(rf_recipe)
+
+
+```
+
+train and tune the model
+
+```{r}
+rf_mod
+
+rf_mod %>%
+  parameters()
+
+
+```
+
+```{r}
+
+set.seed(345)
+
+rf_res <-
+  rf_workflow %>%
+  tune_grid(val_set,
+            grid = 25,
+            control = control_grid(save_pred = TRUE),
+            metrics = metric_set(roc_auc))
+
+
+```
+
+
+```{r}
+rf_res %>%
+  show_best(metric = "roc_auc")
+```
+
+
+plotting the results of the tuning process highlights tht both mtry
+
+```{r}
+
+autoplot(rf_res)
+
+
+```
+
+```{r}
+
+rf_best <-
+  rf_res %>%
+  select_best(metric = "roc_auc")
+
+rf_best
+
+
+
+```
+
+
+```{r}
+rf_auc <- 
+  rf_res %>%
+  collect_predictions(parameters = rf_best) %>%
+  roc_curve(children, .pred_children) %>%
+  mutate(model = "Random Forest")
+
+
+bind_rows(rf_auc, lr_auc) %>%
+  ggplot(aes(1 - specificity, sensitivity, color = model)) +
+  geom_path(lwd = 1.5, alpha = 0.8) +
+  geom_abline(lty = 3) +
+  coord_equal() +
+  scale_color_viridis_d(option = "plasma", end = .6)
+
+
+```
+
+
+## the last fit
+
+```{r}
+# the last model
+last_rf_mod <-
+  rand_forest(mtry = 8, min_n = 7, trees = 1000) %>%
+  set_engine("ranger", num.threads = cores, importance = "impurity") %>%
+  set_mode("classification")
+
+# the last workflow
+
+last_rf_workflow <-
+  rf_workflow %>%
+  update_model(last_rf_mod)
+
+# the last fit
+
+set.seed(345)
+
+last_rf_fit <- 
+  last_rf_workflow %>%
+  last_fit(splits)
+
+last_rf_fit
+
+
+
+```
+
+```{r}
+
+last_rf_fit %>%
+  collect_metrics()
+
+```
+
+
+```{r}
+library(vip)
+last_rf_fit %>% 
+  pluck(".workflow", 1) %>%
+  pull_workflow_fit() %>%
+  vip(num_features = 20)
+
+```
+
+
+```{r}
+
+last_rf_fit %>%
+  collect_predictions() %>%
+  roc_curve(children, .pred_children) %>%
+  autoplot()
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

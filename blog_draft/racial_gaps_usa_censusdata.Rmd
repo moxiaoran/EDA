@@ -1,0 +1,12 @@
+---
+title: "racial gaps in USA"
+author: "Yifei Liu"
+date: "6/26/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+[The Gaps Between White and Black America, in Charts](https://www.nytimes.com/interactive/2020/06/19/opinion/politics/opportunity-gaps-race-inequality.html)

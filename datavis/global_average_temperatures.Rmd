@@ -1,0 +1,228 @@
+---
+title: "Global Average temperatures"
+author: "Yifei Liu"
+date: "8/19/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+original post: [Global average temperature](https://ggplot2tutor.com/global_annual_temperatures/temperatures/)
+
+inspect the data
+
+```{r}
+
+library(tidyverse)
+detach("package:dplyr", unload = TRUE)
+library(dplyr)
+theme_set(theme_minimal())
+
+temperature <- read_csv("/Users/yifeiliu/Documents/R/data/EDA/datavis/annual_csv.csv")
+
+glimpse(temperature)
+
+temperature <- 
+  temperature %>%
+  filter(Source == "GCAG")
+
+```
+
+create the time series
+
+```{r}
+
+temperature %>%
+  ggplot(aes(Year, Mean)) +
+  geom_ribbon(aes(ymax = Mean, ymin = 0), 
+                  fill = "#EB5286", alpha = 0.7) +
+  geom_line(color = "#6F213F")
+
+
+```
+
+
+add title, caption and axis labels
+
+```{r}
+
+temperature %>%
+  ggplot(aes(Year, Mean)) +
+  geom_ribbon(aes(ymax = Mean, ymin = 0), 
+                  fill = "#EB5286", alpha = 0.7) +
+  geom_line(color = "#6F213F") +
+  scale_y_continuous(expand = expansion(mult = 0)) +
+  scale_x_continuous(expand = expansion(mult = 0)) +
+  labs(
+    title = "Global Average Temperature 1880 - 2016",
+    subtitle = "Compare to average temperature\nfrom 1951 to 1990, the global temperature\nhas risen significantly since 1980",
+    caption = "Source: https://datahub.io/core/global-temp#resource-global-temp_zip\nVisualization = Christian Burkhart"
+  )
+
+
+
+```
+
+
+change the theme 
+
+```{r}
+temperature %>%
+  ggplot(aes(Year, Mean)) +
+  geom_ribbon(aes(ymax = Mean, ymin = 0), 
+                  fill = "#EB5286", alpha = 0.7) +
+  geom_line(color = "#6F213F") +
+  scale_y_continuous(expand = expansion(mult = 0)) +
+  scale_x_continuous(expand = expansion(mult = 0)) +
+  labs(
+    title = "Global Average Temperature 1880 - 2016",
+    subtitle = "Compare to average temperature\nfrom 1951 to 1990, the global temperature\nhas risen significantly since 1980",
+    caption = "Source: https://datahub.io/core/global-temp#resource-global-temp_zip\nVisualization = Christian Burkhart"
+  ) +
+  theme(
+    text = element_text(family = "Roboto"),
+    plot.margin = unit(rep(1, 4), "cm"),
+    plot.title = element_text(size = 20,
+                              face = "bold",
+                              margin = margin(b = 10)),
+    plot.subtitle = element_text(size = 17,
+                                 margin = margin(b = 25)),
+    plot.caption = element_text(size = 12, 
+                                margin = margin(t = 15)),
+    panel.grid.major = element_line(color = "#DAE1E7"),
+    panel.background = element_blank(),
+    axis.text.x = element_text(margin = margin(r = 5)),
+    axis.text.y = element_text(margin = margin(t = 5)),
+    axis.title = element_text(size = 15),
+    axis.line = element_line(),
+    axis.title.y = element_text(margin = margin(r = 10),
+                                hjust = 0.5),
+    axis.title.x = element_text(margin = margin(t = 10),
+                                hjust = 0.5),
+  )
+
+
+
+
+```
+
+
+adjust the color 
+
+```{r}
+temperature %>%
+  ggplot(aes(Year, Mean)) +
+  geom_ribbon(aes(ymax = Mean, ymin = 0), 
+                  fill = "#EB5286", alpha = 0.7) +
+  geom_line(color = "#6F213F") +
+  scale_y_continuous(expand = expansion(mult = 0)) +
+  scale_x_continuous(expand = expansion(mult = 0)) +
+  labs(
+    title = "Global Average Temperature 1880 - 2016",
+    subtitle = "Compare to average temperature\nfrom 1951 to 1990, the global temperature\nhas risen significantly since 1980",
+    caption = "Source: https://datahub.io/core/global-temp#resource-global-temp_zip\nVisualization = Christian Burkhart"
+  ) +
+  theme(
+    text = element_text(family = "Roboto"),
+    plot.margin = unit(rep(1, 4), "cm"),
+    plot.title = element_text(size = 20,
+                              face = "bold",
+                              color = "#22292F",
+                              margin = margin(b = 10)),
+    plot.subtitle = element_text(size = 17,
+                                 margin = margin(b = 25)),
+    plot.caption = element_text(size = 12, 
+                                margin = margin(t = 15)),
+    panel.grid.major = element_line(color = "#DAE1E7"),
+    panel.background = element_blank(),
+    axis.text = element_text(size = 12, color = "#22292F"),
+    axis.text.x = element_text(margin = margin(r = 5)),
+    axis.text.y = element_text(margin = margin(t = 5)),
+    axis.title = element_text(size = 15),
+    axis.line = element_line(color = "#3D3852"),
+    axis.title.y = element_text(margin = margin(r = 10),
+                                hjust = 0.5),
+    axis.title.x = element_text(margin = margin(t = 10),
+                                hjust = 0.5),
+  )
+
+
+```
+
+add annotations
+
+```{r}
+
+temperature %>%
+  ggplot(aes(Year, Mean)) +
+  annotate("segment", x = 1880, xend = 2016,
+           y = 0, yend = 0, linetype = "dashed", color = "#6F213F") +
+  annotate("segment", x = 1951, xend = 1951,
+           y = -0.5, yend = 1.2, linetype = "dashed",color = "#451225") +
+  annotate("segment", x = 1980, xend = 1980,
+           y = -0.5, yend = 1.2, linetype = "dashed",color = "#451225") +
+  annotate("rect", fill = "#FA7EA8", alpha = 0.1,
+           xmin = 1951, xmax = 1980, ymin = -0.5, ymax = 1.2) +
+  annotate("text", x = 1953, y = 0.89,
+           hjust = 0, color = "#451225", size = 3.7,
+           label = "The U.S. Naitonal Weather\nService, uses the three-decade\nperiod from 1951 to 1980\nas a baseline value to \nmeasure the global average \ntemperature") +
+  annotate("text", x = 1892, y = 0.15,
+           hjust = 0, size = 3.7, 
+           label = "The 0 line show how much warmer or colder\nthe world was in a particular year compared to \nthe average temperature between 1951 to 1980") +
+  geom_ribbon(aes(ymax = Mean, ymin = 0), 
+                  fill = "#EB5286", alpha = 0.7) +
+  geom_line(color = "#6F213F") +
+  scale_y_continuous(expand = expansion(mult = 0)) +
+  scale_x_continuous(expand = expansion(mult = 0)) +
+  labs(
+    title = "Global Average Temperature 1880 - 2016",
+    subtitle = "Compare to average temperature\nfrom 1951 to 1990, the global temperature\nhas risen significantly since 1980",
+    caption = "Source: https://datahub.io/core/global-temp#resource-global-temp_zip\nVisualization: Christian Burkhart"
+  ) +
+  theme(
+    text = element_text(family = "Roboto"),
+    plot.margin = unit(rep(1, 4), "cm"),
+    plot.title = element_text(size = 20,
+                              face = "bold",
+                              color = "#22292F",
+                              margin = margin(b = 10)),
+    plot.subtitle = element_text(size = 17,
+                                 margin = margin(b = 25)),
+    plot.caption = element_text(size = 12, 
+                                margin = margin(t = 15)),
+    panel.grid.major = element_line(color = "#DAE1E7"),
+    panel.background = element_blank(),
+    axis.text = element_text(size = 12, color = "#22292F"),
+    axis.text.x = element_text(margin = margin(r = 5)),
+    axis.text.y = element_text(margin = margin(t = 5)),
+    axis.title = element_text(size = 15),
+    axis.line = element_line(color = "#3D3852"),
+    axis.title.y = element_text(margin = margin(r = 10),
+                                hjust = 0.5),
+    axis.title.x = element_text(margin = margin(t = 10),
+                                hjust = 0.5),
+  )
+
+
+```
+
+
+
+save this image
+
+```{r}
+ggsave(width = 16, height = 10, "/Users/yifeiliu/Documents/R/output/EDA/datavis/temperature.png")
+
+
+```
+
+
+
+
+
+
+

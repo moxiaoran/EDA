@@ -3,6 +3,8 @@ title: "ff_data_vis"
 author: "Yifei Liu"
 date: "5/31/2020"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -194,6 +196,36 @@ x %>%
 
  
  
+LIBOR-ISO gap
+
+this rate measure the interbank lending stability. Some bank have access to Fed Fund rate, and some don't. And When some of these bank couldn't find counterpart who are willing to lend them at fed fund rate, libor rate increase.  This rate raise to highest when Bear Stearn failed. 
+
+```{r}
+
+libor_ois <- tq_get(x = c("FEDFUNDS","USD1MTD156N"), 
+                    get = "economic.data", from = "2007-07-01",
+                    to = "2011-01-01") %>%
+  pivot_wider(names_from = symbol, values_from = price) %>%
+  rename(libor = USD1MTD156N, ff = FEDFUNDS)
+
+libor_ois %>%
+  mutate(libor = case_when(is.na(libor) ~ dplyr::lag(libor),
+                     TRUE ~ libor)) %>%
+  filter(lubridate::day(date) == 1) %>%
+  mutate(rate_gap = libor - ff) %>%
+  ggplot(aes(date, rate_gap)) +
+  geom_line()
+
+libor_ois %>%
+  mutate(libor = case_when(is.na(libor) ~ dplyr::lag(libor),
+                     TRUE ~ libor)) %>%
+  filter(lubridate::day(date) == 1) %>%
+  mutate(rate_gap = libor - ff) %>%
+  ggplot(aes(date, rate_gap)) +
+  geom_line()
+
+
+```
 
 
 
